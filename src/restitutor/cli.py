@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import override
 
 from docutils import nodes
 from docutils.core import publish_doctree
+from docutils.readers.standalone import Reader
+from docutils.transforms.references import Substitutions
 
 from .context import FmtCtx
 from .directives import register_directives
@@ -25,6 +28,16 @@ register_directives()
 def _print_header(label: str) -> None:
     hashes = "#" * (len(label) + 2)
     print(f"{hashes}\n {label}\n{hashes}\n")
+
+
+class NoSubstitutionReader(Reader[str]):
+    @override
+    def get_transforms(self):
+        # Get the default transforms
+        transforms = list(super().get_transforms())
+        # Filter out the Substitutions transform
+        transforms = [t for t in transforms if t is not Substitutions]
+        return transforms
 
 
 def main() -> None:
@@ -49,7 +62,10 @@ def main() -> None:
 
     for i, rst_path in enumerate(rst_paths):
         rst_source = rst_path.read_text(encoding="utf8")
-        doctree: nodes.document = publish_doctree(rst_source)
+        doctree: nodes.document = publish_doctree(
+            rst_source,
+            reader=NoSubstitutionReader(),
+        )
 
         reconstructed = ast_to_rst(doctree, FmtCtx(preserve_row_newlines=not clean))
 

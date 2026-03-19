@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+import re
+from typing import Final
+
 from docutils import nodes
 
 from .context import FmtCtx
@@ -23,7 +26,19 @@ from .nodes import (
     XRefNode,
 )
 
-ADORNMENTS = ["#", "*", "=", "-", "^"]
+adornments: Final[list[str]] = ["#", "*", "=", "-", "^"]
+space_re: Final[re.Pattern[str]] = re.compile("\\s+")
+admonition_map: Final[dict[type[nodes.Admonition], str]] = {
+    nodes.note: "note",
+    nodes.warning: "warning",
+    nodes.tip: "tip",
+    nodes.hint: "hint",
+    nodes.caution: "caution",
+    nodes.danger: "danger",
+    nodes.error: "error",
+    nodes.attention: "attention",
+    nodes.important: "important",
+}
 
 
 def _to_roman(n: int) -> str:
@@ -51,7 +66,11 @@ def _to_roman(n: int) -> str:
     return "".join(res)
 
 
-def children_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
+def children_to_rst(node: nodes.Node, ctx: FmtCtx, split_ctx: bool = False) -> str:
+    if split_ctx:
+        return "".join(
+            ast_to_rst(child, ctx.ctx(i)) for i, child in enumerate(node.children)
+        )
     return "".join(ast_to_rst(child, ctx) for child in node.children)
 
 
@@ -96,7 +115,7 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
                 curr = curr.parent
             level = max(level, 0)
 
-            adornment_char = ADORNMENTS[level] if level < len(ADORNMENTS) else '"'
+            adornment_char = adornments[level] if level < len(adornments) else '"'
             adornment = adornment_char * len(title_text)
 
             if level < 2:
@@ -155,7 +174,7 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             buf.append("\n")
 
         case nodes.list_item():
-            content = children_to_rst(node, ctx)
+            content = children_to_rst(node, ctx, split_ctx=True)
             if content.endswith("\n\n"):
                 content = content[:-1]
             buf.append(content)
@@ -200,8 +219,49 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
                         raise RuntimeError(f"Invalid line block child: {child}")
             buf.append("\n")
 
+        case nodes.definition_list():
+            # A definition list is rendered as:
+            #
+            # term 1
+            #    Definition...
+            #
+            # term 2
+            #    Definition...
+            #
+            first = True
+            for item in node.children:
+                if not isinstance(item, nodes.definition_list_item):
+                    continue
+                if not first:
+                    buf.append("\n")  # blank line between items
+                first = False
+                buf.append(ast_to_rst(item, ctx))
+            buf.append("\n")
+
+        case nodes.definition_list_item():
+            # Expected children: term, definition
+            term_nodes = [c for c in node.children if isinstance(c, nodes.term)]
+            def_nodes = [c for c in node.children if isinstance(c, nodes.definition)]
+
+            # Term on its own line (no indentation)
+            for i, term in enumerate(term_nodes):
+                buf.append(ctx.prefix(i) + children_to_rst(term, ctx).rstrip() + "\n")
+
+            # Definitions, indented by 3 spaces as standard in reST
+            def_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
+            for d in def_nodes:
+                content = ast_to_rst(d, def_ctx)
+                if content.endswith("\n\n"):
+                    content = content[:-1]
+                buf.append(content)
+
+        case nodes.term() | nodes.definition():
+            # Just the children
+            buf.append(children_to_rst(node, ctx))
+
         case nodes.Text():
             clean = node.astext().replace("\n", " ")
+            clean = re.sub(space_re, " ", clean)
             buf.append(clean.replace(". ", f".\n{ctx.tail_prefix}"))
 
         case TocTreeNode():
@@ -468,8 +528,48 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             if not buf[-1].endswith("\n\n"):
                 buf.append("\n")
 
+        case (
+            nodes.attention()
+            | nodes.caution()
+            | nodes.danger()
+            | nodes.error()
+            | nodes.important()
+            | nodes.note()
+            | nodes.tip()
+            | nodes.hint()
+            | nodes.warning()
+        ):
+            # Look up the directive keyword based on the node’s class
+            buf.append(f"{ctx.head_prefix}.. {admonition_map[type(node)]}::\n\n")
+
+            body_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
+            for child in node.children:
+                buf.append(ast_to_rst(child, body_ctx))
+
+            if not buf[-1].endswith("\n\n"):
+                buf.append("\n")
+
         case nodes.section() | nodes.target():
             return children_to_rst(node, ctx)
+
+        case nodes.substitution_definition():
+            # Pick the first name as the substitution name
+            names = node.get("names") or []
+            name = names[0] if names else ""
+
+            # Render the body using existing machinery
+            # Substitutions are inline, so we don’t want trailing blank lines
+            body = children_to_rst(node, ctx).rstrip("\n")
+
+            # Emit the standard reST form:
+            # .. |name| replace:: body
+            buf.append(f"{ctx.head_prefix}.. |{name}| replace:: {body}\n\n")
+
+        case nodes.substitution_reference():
+            # Re‑emit substitution references like |name|
+            # Use refname when present, otherwise fall back to the visible text.
+            name = node.get("refname") or node.astext()
+            buf.append(f"|{name}|")
 
         case _:
             raise RuntimeError(f"Unknown node type: {type(node)} {node}")

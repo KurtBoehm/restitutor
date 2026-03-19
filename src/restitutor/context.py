@@ -27,6 +27,9 @@ class FmtCtx:
     def empty(self) -> bool:
         return not self.head_prefix and not self.tail_prefix
 
+    def prefix(self, index: int) -> str:
+        return self.head_prefix if index == 0 else self.tail_prefix
+
     def with_indent(self, extra: str) -> FmtCtx:
         """Return a new context with increased indent (for child content)."""
         return FmtCtx(
@@ -42,3 +45,22 @@ class FmtCtx:
             tail_prefix=self.tail_prefix + " " * len(prefix),
             preserve_row_newlines=self.preserve_row_newlines,
         )
+
+    @property
+    def head_ctx(self) -> FmtCtx:
+        return FmtCtx(
+            head_prefix=self.head_prefix,
+            tail_prefix=self.head_prefix,
+            preserve_row_newlines=self.preserve_row_newlines,
+        )
+
+    @property
+    def tail_ctx(self) -> FmtCtx:
+        return FmtCtx(
+            head_prefix=self.tail_prefix,
+            tail_prefix=self.tail_prefix,
+            preserve_row_newlines=self.preserve_row_newlines,
+        )
+
+    def ctx(self, index: int) -> FmtCtx:
+        return self.head_ctx if index == 0 else self.tail_ctx

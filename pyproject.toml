@@ -26,7 +26,7 @@ classifiers = [
   "Topic :: Text Processing",
   "Topic :: Text Processing :: Markup",
 ]
-dependencies = ["docutils"]
+dependencies = ["docutils", "pygments"]
 
 [tool.setuptools.dynamic]
 version = { attr = "restitutor.__version__" }
