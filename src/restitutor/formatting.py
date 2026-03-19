@@ -1,3 +1,9 @@
+# This file is part of https://github.com/KurtBoehm/restitutor.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 from __future__ import annotations
 
 from docutils import nodes
@@ -366,7 +372,8 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
                         buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
                     # Header separator
                     buf.append(
-                        ctx.tail_prefix + _render_table_border(widths, below_header=True)
+                        ctx.tail_prefix
+                        + _render_table_border(widths, below_header=True)
                     )
 
                 # Body
@@ -477,6 +484,7 @@ def _render_doxygen_classlike_options(node: DoxyNode, buf: list[str]) -> None:
         buf.append("   :no-link:\n")
     if node.get("allow-dot-graphs"):
         buf.append("   :allow-dot-graphs:\n")
+
 
 def _split_table_rows(tgroup: nodes.tgroup) -> list[list[nodes.entry]]:
     """Collect rows as lists of entries, ignoring colspec details."""

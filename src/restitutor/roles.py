@@ -1,7 +1,13 @@
+# This file is part of https://github.com/KurtBoehm/restitutor.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Final
 
 from docutils.parsers.rst import languages, roles
