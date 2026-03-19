@@ -10,6 +10,7 @@ from docutils import nodes
 
 from .context import FmtCtx
 from .nodes import (
+    ContentsNode,
     CurrentModuleNode,
     DoxyClassNode,
     DoxyConceptNode,
@@ -65,27 +66,22 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             return "\n".join(part.rstrip() for part in (text,) if part.strip()) + "\n"
 
         case nodes.docinfo():
-            # Each child is typically an element like author, date, version...
+            width = max(len(_bibliographic_key(child)) for child in node.children) + 2
             for child in node.children:
-                match child:
-                    case nodes.author():
-                        buf.append(f":Author: {child.astext()}\n")
-                    case nodes.organization():
-                        buf.append(f":Organization: {child.astext()}\n")
-                    case nodes.contact():
-                        buf.append(f":Contact: {child.astext()}\n")
-                    case nodes.version():
-                        buf.append(f":Version: {child.astext()}\n")
-                    case nodes.revision():
-                        buf.append(f":Revision: {child.astext()}\n")
-                    case nodes.status():
-                        buf.append(f":Status: {child.astext()}\n")
-                    case nodes.date():
-                        buf.append(f":Date: {child.astext()}\n")
-                    case nodes.copyright():
-                        buf.append(f":Copyright: {child.astext()}\n")
-                    case _:
-                        raise RuntimeError(f"Unsupported docinfo child: {child}")
+                key = f":{_bibliographic_key(child)}:"
+                buf.append(f"{key:<{width}} {child.astext()}\n")
+            buf.append("\n")
+
+        case ContentsNode():
+            buf.append(".. contents::\n")
+            if node.get("local"):
+                buf.append("   :local:\n")
+            if (depth := node.get("depth")) is not None:
+                buf.append(f"   :depth: {depth}\n")
+            if (backlinks := node.get("backlinks")) is not None:
+                buf.append(f"   :backlinks: {backlinks}\n")
+            if node.get("titlesonly"):
+                buf.append("   :titlesonly:\n")
             buf.append("\n")
 
         case nodes.title():
@@ -479,6 +475,28 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             raise RuntimeError(f"Unknown node type: {type(node)} {node}")
 
     return "".join(buf)
+
+
+def _bibliographic_key(node: nodes.Node) -> str:
+    match node:
+        case nodes.author():
+            return "Author"
+        case nodes.organization():
+            return "Organization"
+        case nodes.contact():
+            return "Contact"
+        case nodes.version():
+            return "Version"
+        case nodes.revision():
+            return "Revision"
+        case nodes.status():
+            return "Status"
+        case nodes.date():
+            return "Date"
+        case nodes.copyright():
+            return "Copyright"
+        case _:
+            raise RuntimeError(f"Unsupported bibliographic key: {node}")
 
 
 def _render_doxygen_classlike_options(node: DoxyNode, buf: list[str]) -> None:

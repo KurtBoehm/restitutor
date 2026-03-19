@@ -11,6 +11,10 @@ from typing import final
 from docutils import nodes
 
 
+class ContentsNode(nodes.General, nodes.Element):
+    """Node for contents."""
+
+
 class TocTreeNode(nodes.General, nodes.Element):
     """Node for inserting a TOC tree."""
 

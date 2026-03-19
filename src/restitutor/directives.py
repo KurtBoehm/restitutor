@@ -13,6 +13,7 @@ from docutils.parsers.rst import Directive, directives
 from docutils.parsers.rst.directives.tables import ListTable
 
 from .nodes import (
+    ContentsNode,
     CurrentModuleNode,
     DoxyClassNode,
     DoxyConceptNode,
@@ -77,6 +78,26 @@ class MarkingListTable(ListTable):
             blank_counts.append(trailing_blanks)
 
         return blank_counts
+
+
+class ContentsDirective(Directive):
+    has_content: ClassVar[bool] = False
+    option_spec = {
+        "local": directives.flag,
+        "depth": directives.nonnegative_int,
+        "backlinks": directives.unchanged,
+        "titlesonly": directives.flag,
+    }
+
+    @override
+    def run(self) -> list[nodes.Node]:
+        node = ContentsNode(
+            local="local" in self.options,
+            depth=self.options.get("depth"),
+            backlinks=self.options.get("backlinks"),
+            titlesonly="titlesonly" in self.options,
+        )
+        return [node]
 
 
 @final
@@ -227,6 +248,7 @@ class CurrentModuleDirective(Directive):
 
 def register_directives() -> None:
     """Register our custom directives with docutils."""
+    directives.register_directive("contents", ContentsDirective)
     directives.register_directive("list-table", MarkingListTable)
     directives.register_directive("toctree", TocTreeDirective)
 
