@@ -8,19 +8,12 @@ from .nodes import (
     DoxyClassNode,
     DoxyConceptNode,
     DoxyFunctionNode,
+    DoxyNode,
     DoxyStructNode,
     DoxyTypedefNode,
     DoxyVariableNode,
-    DoxyNode,
     TocTreeNode,
     XRefNode,
-)
-from .tables import (
-    compute_column_widths,
-    entry_text,
-    render_table_border,
-    render_table_row,
-    split_table_rows,
 )
 
 ADORNMENTS = ["#", "*", "=", "-", "^"]
@@ -334,9 +327,9 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
                     return children_to_rst(node, ctx)
 
                 tgroup = tgroups[0]
-                rows = split_table_rows(tgroup)
-                widths = compute_column_widths(rows, ctx)
-                border = ctx.tail_prefix + render_table_border(widths)
+                rows = _split_table_rows(tgroup)
+                widths = _compute_column_widths(rows, ctx)
+                border = ctx.tail_prefix + _render_table_border(widths)
 
                 # Separate header (thead) from body if present
                 thead = [c for c in tgroup.children if isinstance(c, nodes.thead)]
@@ -366,23 +359,23 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
                 # Header
                 if header_rows:
                     for row in header_rows:
-                        texts = [entry_text(e, ctx) for e in row]
+                        texts = [_entry_text(e, ctx) for e in row]
                         # pad with empty cells if short
                         while len(texts) < len(widths):
                             texts.append("")
-                        buf.append(ctx.tail_prefix + render_table_row(texts, widths))
+                        buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
                     # Header separator
                     buf.append(
-                        ctx.tail_prefix + render_table_border(widths, below_header=True)
+                        ctx.tail_prefix + _render_table_border(widths, below_header=True)
                     )
 
                 # Body
                 for row in body_rows:
-                    texts = [entry_text(e, ctx) for e in row]
+                    texts = [_entry_text(e, ctx) for e in row]
                     while len(texts) < len(widths):
                         texts.append("")
-                    buf.append(ctx.tail_prefix + render_table_row(texts, widths))
-                    buf.append(ctx.tail_prefix + render_table_border(widths))
+                    buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
+                    buf.append(ctx.tail_prefix + _render_table_border(widths))
 
                 buf.append("\n")
 
@@ -484,3 +477,87 @@ def _render_doxygen_classlike_options(node: DoxyNode, buf: list[str]) -> None:
         buf.append("   :no-link:\n")
     if node.get("allow-dot-graphs"):
         buf.append("   :allow-dot-graphs:\n")
+
+def _split_table_rows(tgroup: nodes.tgroup) -> list[list[nodes.entry]]:
+    """Collect rows as lists of entries, ignoring colspec details."""
+    rows: list[list[nodes.entry]] = []
+    for part in tgroup.children:
+        if isinstance(part, (nodes.thead, nodes.tbody)):
+            for row in part.children:
+                if isinstance(row, nodes.row):
+                    row_entries = [
+                        e for e in row.children if isinstance(e, nodes.entry)
+                    ]
+                    rows.append(row_entries)
+    return rows
+
+
+def _entry_text(entry: nodes.entry, ctx: FmtCtx) -> str:
+    # Import here to avoid circular import with formatting.ast_to_rst
+    from .formatting import children_to_rst
+
+    # Render children as RST, then strip extra blank lines
+    raw = children_to_rst(entry, ctx.with_indent(""))
+    # Remove paragraph-level extra spacing (two newlines) for table cells
+    lines: list[str] = []
+    for line in raw.splitlines():
+        if line.strip() == "":
+            # omit empty lines inside cells to keep tables compact
+            continue
+        lines.append(line.rstrip())
+    return "\n".join(lines) if lines else ""
+
+
+def _compute_column_widths(rows: list[list[nodes.entry]], ctx: FmtCtx) -> list[int]:
+    """Compute minimal column widths based on textual content."""
+    if not rows:
+        return []
+
+    ncols = max(len(r) for r in rows)
+    widths = [0] * ncols
+
+    for row in rows:
+        for i, entry in enumerate(row):
+            text = _entry_text(entry, ctx)
+            col_width = max(len(line) for line in text.splitlines()) if text else 0
+            widths[i] = max(widths[i], col_width)
+
+    # Ensure each column has at least width 1
+    return [max(w, 1) for w in widths]
+
+
+def _render_table_border(widths: list[int], below_header: bool = False) -> str:
+    # +-----+---+------+ style
+    parts = ["+"]
+    char = "=" if below_header else "-"
+    for w in widths:
+        parts.append(char * (w + 2))
+        parts.append("+")
+    return "".join(parts) + "\n"
+
+
+def _render_table_row(cells: list[str], widths: list[int]) -> str:
+    """
+    Render a single logical row that may have multiline cells.
+
+    `cells` is list of already-prepared text for each cell.
+    """
+    # Split each cell into lines
+    split_cells: list[list[str]] = []
+    for text in cells:
+        cell_lines = text.splitlines() if text else [""]
+        split_cells.append(cell_lines)
+
+    # Determine how many physical lines this row will have
+    max_lines = max(len(c) for c in split_cells) if split_cells else 0
+
+    out_lines: list[str] = []
+    for line_idx in range(max_lines):
+        parts = ["|"]
+        for col_idx, width in enumerate(widths):
+            cell_lines = split_cells[col_idx] if col_idx < len(split_cells) else [""]
+            line_text = cell_lines[line_idx] if line_idx < len(cell_lines) else ""
+            parts.append(" " + line_text.ljust(width) + " ")
+            parts.append("|")
+        out_lines.append("".join(parts) + "\n")
+    return "".join(out_lines)

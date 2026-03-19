@@ -4,6 +4,7 @@ from typing import ClassVar, final, override
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
+from docutils.parsers.rst.directives.tables import ListTable
 
 from .nodes import (
     CurrentModuleNode,
@@ -20,6 +21,56 @@ from .nodes import (
 
 def int_or_nothing(argument: str | None) -> int:
     return 999 if not argument else int(argument)
+
+
+class MarkingListTable(ListTable):
+    @override
+    def run(self):
+        result = super().run()
+        for node in result:
+            if isinstance(node, nodes.table):
+                node["source_format"] = "list-table"
+                node["header_rows"] = self.options.get("header-rows")
+                node["widths"] = self.options.get("widths")
+                node["row_blank_lines"] = self._compute_row_blank_lines()
+        return result
+
+    def _compute_row_blank_lines(self) -> list[int]:
+        """
+        Inspect the directive body (``self.content``) and derive how many *blank*
+        lines separated each top-level list-table row in the original source.
+
+        Returns a list of length ``(num_rows - 1)``; element ``i`` is the number of
+        blank lines that were between row ``i`` and row ``i + 1`` (only trailing
+        blanks at the end of row ``i`` are counted).
+        """
+        # self.content is a StringList, treat it as a list of strings.
+        lines = list(self.content)
+
+        # The start of a row is a line that begins with `* -` ignoring leading spaces.
+        row_line_indices: list[int] = []
+        for idx, line in enumerate(lines):
+            if line.lstrip().startswith("* -"):
+                row_line_indices.append(idx)
+
+        if len(row_line_indices) < 2:
+            return []
+
+        blank_counts: list[int] = []
+        for i in range(len(row_line_indices) - 1):
+            start = row_line_indices[i]
+            nxt = row_line_indices[i + 1]
+            segment = lines[start + 1 : nxt]
+
+            trailing_blanks = 0
+            for line in reversed(segment):
+                if line.strip():
+                    break
+                trailing_blanks += 1
+
+            blank_counts.append(trailing_blanks)
+
+        return blank_counts
 
 
 @final
@@ -170,6 +221,7 @@ class CurrentModuleDirective(Directive):
 
 def register_directives() -> None:
     """Register our custom directives with docutils."""
+    directives.register_directive("list-table", MarkingListTable)
     directives.register_directive("toctree", TocTreeDirective)
 
     doxys: list[type[DoxyDirective]] = [

@@ -16,12 +16,10 @@ from .context import FmtCtx
 from .directives import register_directives
 from .formatting import ast_to_rst
 from .roles import register_sphinx_text_roles
-from .tables import register_list_table
 
 # Register roles and directives with docutils
 register_sphinx_text_roles()
 register_directives()
-register_list_table()
 
 
 def _print_header(label: str) -> None:
