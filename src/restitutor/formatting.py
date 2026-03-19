@@ -64,6 +64,30 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             # Single trailing newline, strip trailing spaces in the whole doc
             return "\n".join(part.rstrip() for part in (text,) if part.strip()) + "\n"
 
+        case nodes.docinfo():
+            # Each child is typically an element like author, date, version...
+            for child in node.children:
+                match child:
+                    case nodes.author():
+                        buf.append(f":Author: {child.astext()}\n")
+                    case nodes.organization():
+                        buf.append(f":Organization: {child.astext()}\n")
+                    case nodes.contact():
+                        buf.append(f":Contact: {child.astext()}\n")
+                    case nodes.version():
+                        buf.append(f":Version: {child.astext()}\n")
+                    case nodes.revision():
+                        buf.append(f":Revision: {child.astext()}\n")
+                    case nodes.status():
+                        buf.append(f":Status: {child.astext()}\n")
+                    case nodes.date():
+                        buf.append(f":Date: {child.astext()}\n")
+                    case nodes.copyright():
+                        buf.append(f":Copyright: {child.astext()}\n")
+                    case _:
+                        raise RuntimeError(f"Unsupported docinfo child: {child}")
+            buf.append("\n")
+
         case nodes.title():
             assert ctx.empty
 
