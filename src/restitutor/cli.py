@@ -13,7 +13,7 @@ from typing import override
 from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.readers.standalone import Reader
-from docutils.transforms.references import Substitutions
+from docutils.transforms.references import Footnotes, Substitutions
 
 from .context import FmtCtx
 from .directives import register_directives
@@ -30,13 +30,15 @@ def _print_header(label: str) -> None:
     print(f"{hashes}\n {label}\n{hashes}\n")
 
 
-class NoSubstitutionReader(Reader[str]):
+class NoSubstitutionReader(Reader):
     @override
     def get_transforms(self):
         # Get the default transforms
         transforms = list(super().get_transforms())
         # Filter out the Substitutions transform
-        transforms = [t for t in transforms if t is not Substitutions]
+        transforms = [
+            t for t in transforms if t is not Substitutions and t is not Footnotes
+        ]
         return transforms
 
 

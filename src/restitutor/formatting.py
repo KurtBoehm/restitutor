@@ -39,6 +39,16 @@ admonition_map: Final[dict[type[nodes.Admonition], str]] = {
     nodes.attention: "attention",
     nodes.important: "important",
 }
+bibliographic_map: Final[dict[type[nodes.Node], str]] = {
+    nodes.author: "Author",
+    nodes.organization: "Organization",
+    nodes.contact: "Contact",
+    nodes.version: "Version",
+    nodes.revision: "Revision",
+    nodes.status: "Status",
+    nodes.date: "Date",
+    nodes.copyright: "Copyright",
+}
 
 
 def _to_roman(n: int) -> str:
@@ -85,9 +95,10 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             return "\n".join(part.rstrip() for part in (text,) if part.strip()) + "\n"
 
         case nodes.docinfo():
-            width = max(len(_bibliographic_key(child)) for child in node.children) + 2
+            width = max(len(bibliographic_map[type(child)]) for child in node.children)
+            width += 2
             for child in node.children:
-                key = f":{_bibliographic_key(child)}:"
+                key = f":{bibliographic_map[type(child)]}:"
                 buf.append(f"{key:<{width}} {child.astext()}\n")
             buf.append("\n")
 
@@ -202,6 +213,60 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
                 buf.append(f"`{text} <{refuri}>`_")
             else:
                 buf.append(text)
+
+        case nodes.footnote_reference():
+            # Render footnote references as [#label]_
+            # node.astext() is the visible label (e.g. "1")
+            label = node.astext() or node.get("refid") or "#"
+            buf.append(f"[{label}]_")
+
+        case nodes.footnote():
+            # Determine label: prefer explicit label child, than auto, then "names",
+            # then "ids"
+            label = None
+            for child in node.children:
+                if isinstance(child, nodes.label):
+                    label = child.astext()
+                    break
+            if label is None:
+                if node.get("auto") == 1:
+                    label = "#"
+                elif names := node.get("names"):
+                    label = names[0]
+                elif ids := node.get("ids"):
+                    label = ids[0]
+                else:
+                    # Fallback if everything else fails
+                    label = "#"
+
+            # Body children = everything except the label node
+            body_children = [c for c in node.children if not isinstance(c, nodes.label)]
+
+            # Render body with indentation under the footnote directive
+            buf.append(f".. [{label}] ")
+            if body_children:
+                # First child rendered directly after the marker
+                first = body_children[0]
+                # Reuse paragraph/list/etc. rendering, but adjusted indentation
+                # We want content starting right after the marker on the same line
+                if isinstance(first, nodes.paragraph):
+                    # Inline the paragraph text
+                    text = children_to_rst(first, ctx).rstrip("\n")
+                    # children_to_rst for a paragraph adds "\n\n" at the end; strip it
+                    if text.endswith("\n"):
+                        text = text.rstrip()
+                    buf.append(text)
+                    buf.append("\n")
+                else:
+                    # Non‑paragraph: put a newline and indent as a block
+                    buf.append("\n")
+                    body_ctx = ctx.with_indent("   ")
+                    for child in body_children:
+                        buf.append(ast_to_rst(child, body_ctx))
+            else:
+                buf.append("\n")
+
+            buf.append("\n")
 
         case nodes.line_block():
             # Top-level indent for this line block
@@ -575,28 +640,6 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str:
             raise RuntimeError(f"Unknown node type: {type(node)} {node}")
 
     return "".join(buf)
-
-
-def _bibliographic_key(node: nodes.Node) -> str:
-    match node:
-        case nodes.author():
-            return "Author"
-        case nodes.organization():
-            return "Organization"
-        case nodes.contact():
-            return "Contact"
-        case nodes.version():
-            return "Version"
-        case nodes.revision():
-            return "Revision"
-        case nodes.status():
-            return "Status"
-        case nodes.date():
-            return "Date"
-        case nodes.copyright():
-            return "Copyright"
-        case _:
-            raise RuntimeError(f"Unsupported bibliographic key: {node}")
 
 
 def _render_doxygen_classlike_options(node: DoxyNode, buf: list[str]) -> None:
