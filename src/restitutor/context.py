@@ -38,19 +38,19 @@ class FmtCtx:
             preserve_row_newlines=self.preserve_row_newlines,
         )
 
+    def with_tail_indent(self, extra: str) -> FmtCtx:
+        """Return a new context with increased indent (for child content)."""
+        return FmtCtx(
+            head_prefix=self.head_prefix,
+            tail_prefix=self.tail_prefix + extra,
+            preserve_row_newlines=self.preserve_row_newlines,
+        )
+
     def with_list_prefix(self, prefix: str) -> FmtCtx:
         """Return a new context for a list item at the same indent."""
         return FmtCtx(
             head_prefix=self.head_prefix + prefix,
             tail_prefix=self.tail_prefix + " " * len(prefix),
-            preserve_row_newlines=self.preserve_row_newlines,
-        )
-
-    @property
-    def head_ctx(self) -> FmtCtx:
-        return FmtCtx(
-            head_prefix=self.head_prefix,
-            tail_prefix=self.head_prefix,
             preserve_row_newlines=self.preserve_row_newlines,
         )
 
@@ -63,4 +63,4 @@ class FmtCtx:
         )
 
     def ctx(self, index: int) -> FmtCtx:
-        return self.head_ctx if index == 0 else self.tail_ctx
+        return self if index == 0 else self.tail_ctx

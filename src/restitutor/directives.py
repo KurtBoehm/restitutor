@@ -10,6 +10,7 @@ from typing import ClassVar, final, override
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
+from docutils.parsers.rst.directives.body import CodeBlock
 from docutils.parsers.rst.directives.tables import ListTable
 
 from .nodes import (
@@ -78,6 +79,15 @@ class MarkingListTable(ListTable):
             blank_counts.append(trailing_blanks)
 
         return blank_counts
+
+
+class RememberingCodeBlock(CodeBlock):
+    @override
+    def run(self) -> list[nodes.literal_block]:
+        [node] = super().run()
+        assert isinstance(node, nodes.literal_block)
+        node["directive"] = self.name
+        return [node]
 
 
 class ContentsDirective(Directive):
@@ -251,6 +261,8 @@ def register_directives() -> None:
     directives.register_directive("contents", ContentsDirective)
     directives.register_directive("list-table", MarkingListTable)
     directives.register_directive("toctree", TocTreeDirective)
+    directives.register_directive("code", RememberingCodeBlock)
+    directives.register_directive("code-block", RememberingCodeBlock)
 
     doxys: list[type[DoxyDirective]] = [
         DoxyClassDirective,

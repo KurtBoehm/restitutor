@@ -6,18 +6,20 @@
 
 from __future__ import annotations
 
+import re
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import override
+from typing import Final, override
 
 from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.readers.standalone import Reader
-from docutils.transforms.references import Footnotes, Substitutions
+from docutils.transforms import Transform
+from docutils.transforms.frontmatter import DocInfo, DocTitle
 
 from .context import FmtCtx
 from .directives import register_directives
-from .formatting import ast_to_rst
+from .formatting import PreprocessInfo, ast_to_rst
 from .roles import register_sphinx_text_roles
 
 # Register roles and directives with docutils
@@ -30,16 +32,32 @@ def _print_header(label: str) -> None:
     print(f"{hashes}\n {label}\n{hashes}\n")
 
 
+label_re: Final = re.compile(r"^\s*\.\.\s+_([^:]+):\s*$")
+
+
+def collect_labels(src: str) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for line in src.splitlines():
+        m = label_re.match(line)
+        if not m:
+            continue
+        raw = m.group(1)
+        # Run docutils’ own normalization so you get the same id
+        norm = nodes.make_id(nodes.fully_normalize_name(raw))
+        mapping[norm] = raw
+    return mapping
+
+
 class NoSubstitutionReader(Reader):
     @override
-    def get_transforms(self):
+    def get_transforms(self) -> list[type[Transform]]:
         # Get the default transforms
-        transforms = list(super().get_transforms())
+        # transforms = list(super().get_transforms())
         # Filter out the Substitutions transform
-        transforms = [
-            t for t in transforms if t is not Substitutions and t is not Footnotes
-        ]
-        return transforms
+        # transforms = [
+        #     t for t in transforms if t is not Substitutions and t is not Footnotes
+        # ]
+        return [DocTitle, DocInfo]
 
 
 def main() -> None:
@@ -69,7 +87,11 @@ def main() -> None:
             reader=NoSubstitutionReader(),
         )
 
-        reconstructed = ast_to_rst(doctree, FmtCtx(preserve_row_newlines=not clean))
+        reconstructed = ast_to_rst(
+            doctree,
+            FmtCtx(preserve_row_newlines=not clean),
+            PreprocessInfo(collected_labels=collect_labels(rst_source)),
+        )
 
         if in_place:
             rst_path.write_text(reconstructed, encoding="utf8")
@@ -77,7 +99,7 @@ def main() -> None:
             if i:
                 print()
             _print_header(str(rst_path))
-            print(reconstructed)
+            print(reconstructed, end="")
 
 
 if __name__ == "__main__":
