@@ -258,13 +258,17 @@ class CppDirective(Directive):
 
     @override
     def run(self) -> list[nodes.Node]:
-        # You can introduce a custom node class instead of inline if desired.
         node = CppNode()
         node["cpp_directive"] = self.name  # e.g. "cpp:function"
         node["cpp_signature"] = " ".join(self.arguments)
         node["cpp_options"] = dict(self.options)
         node["newline"] = self.block_text.endswith("\n")
-        node["content"] = [s for s in self.content]
+        self.state.nested_parse(
+            self.content,
+            self.content_offset,
+            node,
+            match_titles=True,
+        )
         return [node]
 
 

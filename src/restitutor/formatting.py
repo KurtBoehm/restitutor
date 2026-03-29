@@ -128,14 +128,12 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
             buf.append("\n")
 
         case nodes.title():
-            assert ctx.empty
-
             title_text = node.astext()
 
             level = -1
             curr: nodes.Node = node
-            while isinstance(curr.parent, nodes.section):
-                level += 1
+            while curr.parent is not None:
+                level += isinstance(curr.parent, nodes.section)
                 curr = curr.parent
             level = max(level, 0)
 
@@ -143,9 +141,9 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
             adornment = adornment_char * len(title_text)
 
             if level < 2:
-                buf.append(f"{adornment}\n{title_text}\n{adornment}\n\n")
-            else:
-                buf.append(f"{title_text}\n{adornment}\n\n")
+                buf.append(f"{ctx.tail_prefix}{adornment}\n")
+            buf.append(f"{ctx.tail_prefix}{title_text}\n")
+            buf.append(f"{ctx.tail_prefix}{adornment}\n\n")
 
         case nodes.paragraph():
             buf.append(ctx.head_prefix + children_to_rst(node, ctx, preproc) + "\n\n")
@@ -598,12 +596,11 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
 
         case CppNode():
             buf.append(f".. {node['cpp_directive']}:: {node['cpp_signature']}\n")
-            content = node["content"]
-            assert isinstance(content, list)
-            if content:
+            if node.children:
                 buf.append("\n")
-            for c in content:
-                buf.append(f"   {c}\n" if c else "\n")
+            buf.append(children_to_rst(node, ctx.with_indent("   "), preproc).rstrip())
+            if node.children:
+                buf.append("\n")
             buf.append("\n")
 
         case CurrentModuleNode():
