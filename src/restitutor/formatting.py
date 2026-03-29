@@ -15,6 +15,7 @@ from docutils import nodes
 from .context import FmtCtx
 from .nodes import (
     ContentsNode,
+    CppNode,
     CurrentModuleNode,
     DoxyClassNode,
     DoxyConceptNode,
@@ -198,9 +199,25 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
             buf.append("\n")
 
         case nodes.list_item():
+            # Render the list item content, potentially with a split context
             content = children_to_rst(node, ctx, preproc, split_ctx=True)
+
+            # If the item ends with exactly two newlines, trim one so we have
+            # a single blank line by default.
             if content.endswith("\n\n"):
                 content = content[:-1]
+
+            # Detect whether the last child is itself a list (bullet or enum)
+            last_child = node.children[-1] if node.children else None
+            is_nested_list = isinstance(
+                last_child, (nodes.bullet_list, nodes.enumerated_list)
+            )
+
+            # If this item ends with a nested list, ensure there is an extra
+            # blank line after it so that following content is visually separated.
+            if is_nested_list and not content.endswith("\n\n"):
+                content += "\n"
+
             buf.append(content)
 
         case nodes.field_list():
@@ -579,8 +596,21 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
 
             buf.append("\n")
 
+        case CppNode():
+            buf.append(f".. {node['cpp_directive']}:: {node['cpp_signature']}\n")
+            content = node["content"]
+            assert isinstance(content, list)
+            if content:
+                buf.append("\n")
+            for c in content:
+                buf.append(f"   {c}\n" if c else "\n")
+            buf.append("\n")
+
         case CurrentModuleNode():
             buf.append(f".. currentmodule:: {node['module']}\n\n")
+
+        case nodes.math():
+            buf.append(f":math:`{node.astext()}`")
 
         case nodes.table():
             source_format = node.get("source_format")
@@ -804,7 +834,7 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
                 buf.append("\n")
 
         case nodes.section():
-            return children_to_rst(node, ctx, preproc)
+            return f"{children_to_rst(node, ctx, preproc).rstrip()}\n\n"
 
         case nodes.target():
             labels: list[str] = []

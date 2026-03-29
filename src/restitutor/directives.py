@@ -15,6 +15,7 @@ from docutils.parsers.rst.directives.tables import ListTable
 
 from .nodes import (
     ContentsNode,
+    CppNode,
     CurrentModuleNode,
     DoxyClassNode,
     DoxyConceptNode,
@@ -241,6 +242,32 @@ type DoxyDirective = (
 )
 
 
+class CppDirective(Directive):
+    has_content: ClassVar[bool] = True
+    required_arguments: ClassVar[int] = 1
+    optional_arguments: ClassVar[int] = 0
+    final_argument_whitespace: ClassVar[bool] = True
+    option_spec = {
+        # mirror commonly-used cpp: options enough to preserve them
+        "noindex": directives.flag,
+        "inline": directives.flag,
+        "tparam-line-spec": directives.unchanged,
+        "visibility": directives.unchanged,
+        "name": directives.unchanged,
+    }
+
+    @override
+    def run(self) -> list[nodes.Node]:
+        # You can introduce a custom node class instead of inline if desired.
+        node = CppNode()
+        node["cpp_directive"] = self.name  # e.g. "cpp:function"
+        node["cpp_signature"] = " ".join(self.arguments)
+        node["cpp_options"] = dict(self.options)
+        node["newline"] = self.block_text.endswith("\n")
+        node["content"] = [s for s in self.content]
+        return [node]
+
+
 @final
 class CurrentModuleDirective(Directive):
     has_content = False
@@ -274,5 +301,15 @@ def register_directives() -> None:
     ]
     for directive in doxys:
         directives.register_directive(directive.node.directive, directive)
+
+    for directive in [
+        "cpp:function",
+        "cpp:class",
+        "cpp:struct",
+        "cpp:var",
+        "cpp:type",
+        "cpp:namespace",
+    ]:
+        directives.register_directive(directive, CppDirective)
 
     directives.register_directive("currentmodule", CurrentModuleDirective)

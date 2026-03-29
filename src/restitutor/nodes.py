@@ -63,6 +63,10 @@ type DoxyNode = (
 )
 
 
+class CppNode(nodes.General, nodes.Element):
+    pass
+
+
 @final
 class CurrentModuleNode(nodes.General, nodes.Element):
     """A Sphinx-style currentmodule directive."""
