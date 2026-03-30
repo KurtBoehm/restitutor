@@ -67,6 +67,7 @@ def register_sphinx_text_roles() -> None:
         roles.register_canonical_role(role, _make_xref_role(role))
         roles.register_canonical_role(f"cpp:{role}", _make_xref_role(f"cpp:{role}"))
         lang.roles.setdefault(role, role)
+        lang.roles.setdefault(f"cpp:{role}", f"cpp:{role}")
 
     # Common "std" roles
     for role in ("ref", "doc", "term", "envvar"):
