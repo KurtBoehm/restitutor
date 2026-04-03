@@ -1,5 +1,8 @@
 # 🧾 Restitutor
 
+[![PyPI - Version](https://img.shields.io/pypi/v/restitutor?logo=pypi&label=PyPI)](https://pypi.org/project/restitutor/)
+[![Test Workflow Status](https://img.shields.io/github/actions/workflow/status/KurtBoehm/restitutor/test.yml?logo=github&label=Tests)](https://github.com/KurtBoehm/restitutor/actions/workflows/test.yml)
+
 An opinionated formatter for reStructuredText (reST) files.
 
 Restitutor parses `.rst` files with `docutils`, reconstructs them from the AST, and writes them back in a normalized, consistent style. It aims to be safe, predictable, and friendly to tooling and code review.
