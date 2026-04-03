@@ -6,6 +6,7 @@
 
 from .cli import main as run_restitutor
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
+# Public surface of the package.
 __all__ = ["run_restitutor"]

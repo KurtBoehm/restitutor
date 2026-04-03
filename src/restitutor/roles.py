@@ -16,6 +16,7 @@ from docutils.parsers.rst.states import Inliner
 
 from .nodes import XRefNode
 
+# Matches "title <target>" in cross-reference roles.
 title_target_re: Final = re.compile("(.*?)(?<!\x00)<(.*?)>\\s*$")
 
 type XRefTuple = tuple[Sequence[XRefNode], Sequence[XRefNode]]
@@ -27,8 +28,10 @@ type RoleFn[N1, N2] = Callable[
 
 def _make_xref_role(role: str) -> RoleFn[XRefNode, XRefNode]:
     """
-    Create a role function that mimics Sphinx’s cross-reference behavior
-    for a single role, e.g. :func:, :class:, :mod:, etc.
+    Create a Sphinx-like cross-reference role for ``role``.
+
+    :param role: Canonical role name (e.g. ``"func"``).
+    :return: A docutils role function.
     """
 
     def role_fn(
@@ -40,11 +43,16 @@ def _make_xref_role(role: str) -> RoleFn[XRefNode, XRefNode]:
         options: Mapping[str, Any] | None = None,
         content: Sequence[str] | None = None,
     ) -> XRefTuple:
+        """
+        Role implementation that returns a single :class:`XRefNode`.
+
+        :return: ``(nodes, messages)`` tuple expected by docutils.
+        """
         from docutils.utils import unescape
 
         m = title_target_re.match(text)
         if m:
-            # "title <target>" form
+            # "title <target>" form.
             title, target = m.groups()
             assert isinstance(title, str) and isinstance(target, str)
         else:
@@ -61,6 +69,13 @@ def _make_xref_role(role: str) -> RoleFn[XRefNode, XRefNode]:
 
 
 def make_generic_role(canonical_name: str, node_class: type[nodes.Node]):
+    """
+    Wrap :class:`roles.GenericRole` and annotate created nodes with ``role``.
+
+    :param canonical_name: Generic role name.
+    :param node_class: Node class to instantiate.
+    :return: A role function suitable for registration.
+    """
     generic = roles.GenericRole(canonical_name, node_class)
 
     def role(
@@ -72,6 +87,11 @@ def make_generic_role(canonical_name: str, node_class: type[nodes.Node]):
         options: Mapping[str, Any] | None = None,
         content: Sequence[str] | None = None,
     ) -> tuple[Sequence[nodes.Node], Sequence[nodes.system_message]]:
+        """
+        Apply the underlying generic role and mark the node.
+
+        :return: ``(nodes, system_messages)`` tuple.
+        """
         [a], b = generic(role_name, rawtext, text, lineno, inliner, options, content)
         assert isinstance(a, nodes.TextElement)
         a["role"] = True
@@ -81,20 +101,26 @@ def make_generic_role(canonical_name: str, node_class: type[nodes.Node]):
 
 
 def register_sphinx_text_roles() -> None:
+    """
+    Register a subset of Sphinx-style text roles with docutils.
+
+    This covers Python-domain, C++-domain, and common std roles.
+    """
     lang = languages.get_language("en")
 
-    # Python domain roles
+    # Python domain roles.
     for role in ("func", "meth", "class", "exc", "attr", "data", "mod", "obj"):
         roles.register_canonical_role(role, _make_xref_role(role))
         roles.register_canonical_role(f"cpp:{role}", _make_xref_role(f"cpp:{role}"))
         lang.roles.setdefault(role, role)
         lang.roles.setdefault(f"cpp:{role}", f"cpp:{role}")
 
-    # Common "std" roles
+    # Common "std" roles.
     for role in ("ref", "doc", "term", "envvar"):
         roles.register_canonical_role(role, _make_xref_role(role))
         lang.roles.setdefault(role, role)
 
+    # Text-style roles that wrap emphasis/literal/strong.
     for canonical_name, node_class in (
         ("emphasis", nodes.emphasis),
         ("literal", nodes.literal),

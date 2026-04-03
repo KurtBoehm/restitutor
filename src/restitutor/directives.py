@@ -30,39 +30,50 @@ from .nodes import (
 
 
 def int_or_nothing(argument: str | None) -> int:
+    """
+    Convert an option string to an int, or return a large sentinel.
+
+    :param argument: Raw option argument or ``None``.
+    :return: Parsed integer or ``999`` if empty.
+    """
     return 999 if not argument else int(argument)
 
 
 class MarkingTable(RSTTable):
     """
-    A variant of docutils' standard table directive that remembers its
-    title and options on the resulting table node so we can reconstruct
-    the original ``.. table::`` directive.
+    ``table`` directive that leaves reconstruction hints on the node.
     """
 
     @override
     def run(self) -> Sequence[nodes.table | nodes.system_message]:
-        # Let the base class do all the hard work
+        """
+        Build the table and mark it as a grid-table source.
+
+        :return: List containing the created table or a system message.
+        """
+        # Let the base class do all the hard work.
         [node] = super().run()
         assert isinstance(node, nodes.table)
-        # Mark that this came from a ``.. table::`` directive
+        # Mark that this came from a ``.. table::`` directive.
         node["source_format"] = "grid-table"
-        # Store the title text, if any
-        if "title" in node:
-            # docutils stores the title node under 'title'
-            title_node = node["title"]
-            if isinstance(title_node, nodes.title):
-                node["table_title"] = title_node.astext()
-        # Preserve options we care about (currently: widths)
-        # ``self.options`` contains parsed directive options.
+        # Preserve options we care about (currently: widths).
         if "widths" in self.options:
             node["grid_widths"] = self.options["widths"]
         return [node]
 
 
 class MarkingListTable(ListTable):
+    """
+    ``list-table`` directive that records layout metadata on the node.
+    """
+
     @override
     def run(self) -> Sequence[nodes.table | nodes.system_message]:
+        """
+        Build the list-table and annotate it for later reconstruction.
+
+        :return: Tables and possible system messages.
+        """
         result = super().run()
         for node in result:
             if isinstance(node, nodes.table):
@@ -74,17 +85,14 @@ class MarkingListTable(ListTable):
 
     def _compute_row_blank_lines(self) -> list[int]:
         """
-        Inspect the directive body (``self.content``) and derive how many *blank*
-        lines separated each top-level list-table row in the original source.
+        Count blank lines between list-table rows in the original text.
 
-        Returns a list of length ``(num_rows - 1)``; element ``i`` is the number of
-        blank lines that were between row ``i`` and row ``i + 1`` (only trailing
-        blanks at the end of row ``i`` are counted).
+        :return: List of trailing blank-line counts per row boundary.
         """
-        # self.content is a StringList, treat it as a list of strings.
+        # self.content is a StringList: treat it as lines.
         lines = list(self.content)
 
-        # The start of a row is a line that begins with `* -` ignoring leading spaces.
+        # The start of a row is a line beginning with ``* -``.
         row_line_indices: list[int] = []
         for idx, line in enumerate(lines):
             if line.lstrip().startswith("* -"):
@@ -111,8 +119,15 @@ class MarkingListTable(ListTable):
 
 
 class RememberingCodeBlock(CodeBlock):
+    """``code``/``code-block`` directive that remembers its own name."""
+
     @override
     def run(self) -> list[nodes.literal_block]:
+        """
+        Run the underlying code-block and tag the literal block.
+
+        :return: Single literal block node.
+        """
         [node] = super().run()
         assert isinstance(node, nodes.literal_block)
         node["directive"] = self.name
@@ -120,6 +135,10 @@ class RememberingCodeBlock(CodeBlock):
 
 
 class ContentsDirective(Directive):
+    """
+    Lightweight ``contents`` directive capturing only a few options.
+    """
+
     has_content: ClassVar[bool] = False
     option_spec = {
         "local": directives.flag,
@@ -130,6 +149,11 @@ class ContentsDirective(Directive):
 
     @override
     def run(self) -> list[nodes.Node]:
+        """
+        Build a :class:`ContentsNode` with normalized options.
+
+        :return: A list containing a single contents node.
+        """
         node = ContentsNode(
             local="local" in self.options,
             depth=self.options.get("depth"),
@@ -141,6 +165,10 @@ class ContentsDirective(Directive):
 
 @final
 class TocTreeDirective(Directive):
+    """
+    Simplified Sphinx-style ``toctree`` directive.
+    """
+
     has_content = True
     required_arguments = 0
     optional_arguments = 0
@@ -160,6 +188,11 @@ class TocTreeDirective(Directive):
 
     @override
     def run(self) -> list[nodes.Node]:
+        """
+        Convert the directive into a :class:`TocTreeNode`.
+
+        :return: A list containing a single toctree node.
+        """
         node = TocTreeNode(
             maxdepth=self.options.get("maxdepth"),
             caption=self.options.get("caption"),
@@ -168,7 +201,7 @@ class TocTreeDirective(Directive):
             includehidden="includehidden" in self.options,
             numbered=self.options.get("numbered"),
             titlesonly="titlesonly" in self.options,
-            # Store the raw entries from the directive content
+            # Store the raw entries from the directive content.
             entries=list(self.content),
         )
         self.add_name(node)
@@ -177,11 +210,15 @@ class TocTreeDirective(Directive):
 
 class _BaseDoxyDirective(Directive):
     """
-    Shared run() logic for doxygen directives.
+    Shared ``run()`` logic for Doxygen directives.
 
     Subclasses must define:
-      - node: type[DoxyNode]
-      - required_arguments / optional_arguments / option_spec / has_content
+
+    * ``node``: :class:`type[DoxyNode]`
+    * ``required_arguments``
+    * ``optional_arguments``
+    * ``option_spec``
+    * ``has_content``
     """
 
     node: ClassVar[type[DoxyNode]]
@@ -192,6 +229,11 @@ class _BaseDoxyDirective(Directive):
 
     @override
     def run(self) -> list[nodes.Node]:
+        """
+        Create a Doxygen node instance with common attributes.
+
+        :return: List containing the created Doxy node.
+        """
         node = self.node(**self.options)
         node["name"] = " ".join(self.arguments)
         node["newline"] = self.block_text.endswith("\n")
@@ -199,6 +241,8 @@ class _BaseDoxyDirective(Directive):
 
 
 class _DoxyBaseItemDirective(_BaseDoxyDirective):
+    """Base for simple Doxygen item directives (function, typedef, etc.)."""
+
     required_arguments: ClassVar[int] = 1
     optional_arguments: ClassVar[int] = 1
     option_spec = {
@@ -211,6 +255,8 @@ class _DoxyBaseItemDirective(_BaseDoxyDirective):
 
 
 class _DoxyClassLikeDirective(_BaseDoxyDirective):
+    """Base for class-like Doxygen directives (class, struct)."""
+
     required_arguments: ClassVar[int] = 1
     optional_arguments: ClassVar[int] = 0
     option_spec = {
@@ -232,31 +278,43 @@ class _DoxyClassLikeDirective(_BaseDoxyDirective):
 
 @final
 class DoxyClassDirective(_DoxyClassLikeDirective):
+    """``.. doxygenclass::`` directive."""
+
     node = DoxyClassNode
 
 
 @final
 class DoxyConceptDirective(_DoxyBaseItemDirective):
+    """``.. doxygenconcept::`` directive."""
+
     node = DoxyConceptNode
 
 
 @final
 class DoxyFunctionDirective(_DoxyBaseItemDirective):
+    """``.. doxygenfunction::`` directive."""
+
     node = DoxyFunctionNode
 
 
 @final
 class DoxyStructDirective(_DoxyClassLikeDirective):
+    """``.. doxygenstruct::`` directive."""
+
     node = DoxyStructNode
 
 
 @final
 class DoxyTypedefDirective(_DoxyBaseItemDirective):
+    """``.. doxygentypedef::`` directive."""
+
     node = DoxyTypedefNode
 
 
 @final
 class DoxyVariableDirective(_DoxyBaseItemDirective):
+    """``.. doxygenvariable::`` directive."""
+
     node = DoxyVariableNode
 
 
@@ -271,6 +329,12 @@ type DoxyDirective = (
 
 
 class CppDirective(Directive):
+    """
+    Wrapper for Sphinx-style ``cpp:`` directives.
+
+    Only preserves enough options to reconstruct source.
+    """
+
     has_content: ClassVar[bool] = True
     required_arguments: ClassVar[int] = 1
     optional_arguments: ClassVar[int] = 0
@@ -286,6 +350,11 @@ class CppDirective(Directive):
 
     @override
     def run(self) -> list[nodes.Node]:
+        """
+        Create a :class:`CppNode` and parse nested content into it.
+
+        :return: List containing the created Cpp node.
+        """
         node = CppNode()
         node["cpp_directive"] = self.name  # e.g. "cpp:function"
         node["cpp_signature"] = " ".join(self.arguments)
@@ -302,6 +371,8 @@ class CppDirective(Directive):
 
 @final
 class CurrentModuleDirective(Directive):
+    """Minimal ``currentmodule`` directive (Sphinx compatibility)."""
+
     has_content = False
     required_arguments = 1  # the module name
     optional_arguments = 0
@@ -310,6 +381,11 @@ class CurrentModuleDirective(Directive):
 
     @override
     def run(self) -> list[nodes.Node]:
+        """
+        Create a :class:`CurrentModuleNode` storing the module name.
+
+        :return: List containing the currentmodule node.
+        """
         node = CurrentModuleNode()
         node["module"] = self.arguments[0]
         return [node]
@@ -343,7 +419,11 @@ _cpp_directive_names: Final[list[str]] = [
 
 
 def register_directives() -> None:
-    """Register our custom directives with docutils."""
+    """
+    Register custom directives with docutils.
+
+    Must be called before parsing reST that uses them.
+    """
     for name, directive in _base_directives.items():
         directives.register_directive(name, directive)
 

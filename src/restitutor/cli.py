@@ -9,21 +9,21 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from pathlib import Path
 
-from .directives import register_directives
 from .formatting import format_rst
-from .roles import register_sphinx_text_roles
-
-# Register roles and directives with docutils
-register_sphinx_text_roles()
-register_directives()
 
 
 def _print_header(label: str) -> None:
+    """Print a simple visual file header."""
     hashes = "#" * (len(label) + 2)
     print(f"{hashes}\n {label}\n{hashes}\n")
 
 
 def main() -> None:
+    """
+    CLI entry point: reformat one or more ``.rst`` files.
+
+    Positional arguments are input files; see ``--help`` for options.
+    """
     parser = ArgumentParser()
     parser.add_argument("rst", type=Path, nargs="+")
     parser.add_argument(

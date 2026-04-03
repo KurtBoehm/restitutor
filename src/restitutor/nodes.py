@@ -12,44 +12,50 @@ from docutils import nodes
 
 
 class ContentsNode(nodes.General, nodes.Element):
-    """Node for contents."""
+    """Minimal node type for ``.. contents::``."""
 
 
 class TocTreeNode(nodes.General, nodes.Element):
-    """Node for inserting a TOC tree."""
+    """Node for inserting a Sphinx-style TOC tree."""
 
 
 class _BaseDoxyNode(nodes.General, nodes.Element):
-    """Base type for Doxy nodes."""
+    """Base type for Doxygen-related node types."""
 
 
 @final
 class DoxyClassNode(_BaseDoxyNode):
+    """Node produced by ``.. doxygenclass::``."""
     directive = "doxygenclass"
 
 
 @final
 class DoxyConceptNode(_BaseDoxyNode):
+    """Node produced by ``.. doxygenconcept::``."""
     directive = "doxygenconcept"
 
 
 @final
 class DoxyFunctionNode(_BaseDoxyNode):
+    """Node produced by ``.. doxygenfunction::``."""
     directive = "doxygenfunction"
 
 
 @final
 class DoxyStructNode(_BaseDoxyNode):
+    """Node produced by ``.. doxygenstruct::``."""
     directive = "doxygenstruct"
 
 
 @final
 class DoxyTypedefNode(_BaseDoxyNode):
+    """Node produced by ``.. doxygentypedef::``."""
     directive = "doxygentypedef"
 
 
 @final
 class DoxyVariableNode(_BaseDoxyNode):
+    """Node produced by ``.. doxygenvariable::``."""
     directive = "doxygenvariable"
 
 
@@ -64,12 +70,12 @@ type DoxyNode = (
 
 
 class CppNode(nodes.General, nodes.Element):
-    pass
+    """Generic container for Sphinx ``cpp:`` directives."""
 
 
 @final
 class CurrentModuleNode(nodes.General, nodes.Element):
-    """A Sphinx-style currentmodule directive."""
+    """Node representing a Sphinx-style ``currentmodule`` directive."""
 
 
 class XRefNode(nodes.reference):

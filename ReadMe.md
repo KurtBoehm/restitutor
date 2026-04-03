@@ -10,23 +10,32 @@ Restitutor parses `.rst` files with `docutils`, reconstructs them from the AST, 
   - Headings with consistent adornments
   - Paragraph spacing
   - Bullet and enumerated lists
+  - Definition lists and field lists
+  - Option lists (CLI style options and descriptions)
 - Preserves and re-emits several Sphinx-style constructs:
   - `.. toctree::`
   - `.. currentmodule::`
-  - Cross-reference roles like `:func:`, `:class:`, `:mod:`, `:ref:`, `:term:`, etc.
+  - Cross-reference roles like `:func:`, `:class:`, `:mod:`, `:ref:`, `:term:`, `:envvar:`, etc.
+  - Generic text roles like `:emphasis:`, `:literal:`, `:strong:`
   - Breathe directives such as `.. doxygenclass::`, `.. doxygenfunction::`, etc.
+  - C++ domain directives such as `.. cpp:function::`, `.. cpp:class::`, etc.
 - Enhanced table handling:
   - Grid tables are reflowed with consistent borders and spacing
   - `.. list-table::` tables are preserved as list-table directives
   - Optional preservation of blank-line spacing between list-table rows
+  - `.. table::` directives are reconstructed around grid tables, with `:widths:` preserved
 - Handles inline markup:
-  - `*emphasis*`, `**strong**`, `inline literals`
-  - Hyperlinks and cross-references
-- Renders:
-  - Literal/code blocks (`::` and `.. code:: lang`)
+  - `*emphasis*`, `**strong**`, ``inline literals``
+  - Hyperlinks and cross-references (including anonymous targets)
+  - Substitutions (definitions and uses: `.. |name| replace::` and `|name|`)
+  - Inline maths via `:math:`
+- Renders block-level constructs:
+  - Literal/code blocks (both `::` and `.. code:: lang` / `.. code-block:: lang`)
   - Images (`.. image::`)
   - Generic admonitions (`.. admonition:: Title`)
+  - Standard admonitions (`.. note::`, `.. warning::`, `.. tip::`, etc.)
   - Line blocks (`| line`)
+  - Footnotes and citations (`.. [#]_`, `.. [label]` and corresponding references)
 
 The formatter currently targets a subset of docutils/Sphinx nodes.
 If it encounters unknown or unsupported nodes, it fails loudly rather than silently corrupting the output.
@@ -83,8 +92,10 @@ At a high level:
    - `TocTreeNode` for `.. toctree::`
    - `CurrentModuleNode` for `.. currentmodule::`
    - `XRefNode` for cross-reference roles
-   - `MarkingListTable` wraps the `list-table` directive and annotates the resulting table with metadata to reconstruct it.
-   - Several `Doxy*Node` types for Breathe directives
+   - `MarkingListTable` wraps the `list-table` directive and annotates the resulting table with metadata to reconstruct it
+   - `MarkingTable` wraps `.. table::` and preserves title/width information
+   - Several `Doxy*Node` types for Breathe/Doxygen directives
+   - `CppNode` for C++ domain directives like `.. cpp:function::`
 3. `ast_to_rst()` recursively walks the doctree and emits reStructuredText, guided by a formatting context (`FmtCtx`) that tracks indentation and list prefixes.
 4. The resulting text is either printed or written back to the original file.
 
@@ -122,12 +133,15 @@ Minor
 Bullet and enumerated lists are normalized to a consistent style:
 
 - Bullet lists use `-`
-- Enumerations preserve style where possible (`1.`, `a.`, `A.`, Roman numerals, etc.)
+- Enumerations preserve style where possible (`1.`, `a.`, `A.`, Roman numerals, `#.` auto-numbered, etc.)
+- Definition lists and field lists are emitted in canonical reST form
+- Option lists keep CLI options and descriptions tightly aligned
 
 ### Tables
 
 - Grid tables are rendered with full borders and aligned columns.
 - `.. list-table::` tables are preserved as `.. list-table::`; options like `:header-rows:` and `:widths:` are preserved.
+- `.. table::` directives are reconstructed around grid tables, including optional `:widths:`.
 - Without `--clean`, Restitutor preserves the number of blank lines between top-level list-table rows.
 
 ## ⚠️ Caveats and Limitations
@@ -139,9 +153,10 @@ Bullet and enumerated lists are normalized to a consistent style:
 
 The project is currently focused on the CLI. The main internal entry points are:
 
-- `ast_to_rst(node: nodes.Node, ctx: FmtCtx) -> str`  
-  Convert a docutils node (usually a whole `document`) back into reStructuredText.
-
+- `format_rst(rst_source: str, *, clean: bool = True) -> str`  
+  Parse and re-emit a full reST document from a string.
+- `ast_to_rst(buf: Buffer, node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> None`  
+  Convert a docutils node (usually a whole `document`) back into reStructuredText, appending to a buffer.
 - `FmtCtx`  
   A dataclass controlling indentation and list-formatting context.
 
