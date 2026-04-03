@@ -19,7 +19,7 @@ from docutils.transforms.frontmatter import DocInfo, DocTitle
 
 from .context import FmtCtx
 from .directives import register_directives
-from .formatting import PreprocessInfo, ast_to_rst
+from .formatting import Buffer, PreprocessInfo, ast_to_rst
 from .roles import register_sphinx_text_roles
 
 # Register roles and directives with docutils
@@ -65,7 +65,7 @@ def make_auto_list_transform(src: list[str]) -> type[Transform]:
 
 
 @final
-class NoSubstitutionReader(Reader):
+class NoSubstitutionReader(Reader):  # pyright: ignore[reportMissingTypeArgument]
     def __init__(self, src: str) -> None:
         super().__init__()
         self.src = src.splitlines()
@@ -108,11 +108,14 @@ def main() -> None:
             reader=NoSubstitutionReader(src=rst_source),
         )
 
-        reconstructed = ast_to_rst(
+        buf = Buffer()
+        ast_to_rst(
+            buf,
             doctree,
             FmtCtx(preserve_row_newlines=not clean),
             PreprocessInfo(collected_labels=collect_labels(rst_source)),
         )
+        reconstructed = str(buf)
 
         if in_place:
             rst_path.write_text(reconstructed, encoding="utf8")
