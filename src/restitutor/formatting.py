@@ -180,7 +180,11 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
             suffix = node.attributes.get("suffix") or "."
 
             for idx, child in enumerate(node.children, start=start):
-                if enumtype == "loweralpha":
+                assert isinstance(child, nodes.list_item)
+
+                if child["auto"]:
+                    label = "#"
+                elif enumtype == "loweralpha":
                     label = chr(ord("a") + (idx - start))
                 elif enumtype == "upperalpha":
                     label = chr(ord("A") + (idx - start))
@@ -867,6 +871,11 @@ def ast_to_rst(node: nodes.Node, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
             # Use refname when present, otherwise fall back to the visible text.
             name = node.get("refname") or node.astext()
             buf.append(f"|{name}|")
+
+        case nodes.system_message():
+            print(node)
+            if node["type"] not in {"INFO"}:
+                raise RuntimeError("Non-INFO system message!")
 
         case _:
             raise RuntimeError(f"Unknown node type: {type(node)} {node}")

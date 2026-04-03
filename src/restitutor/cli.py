@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import Final, override
+from typing import Final, final, override
 
 from docutils import nodes
 from docutils.core import publish_doctree
@@ -48,7 +48,28 @@ def collect_labels(src: str) -> dict[str, str]:
     return mapping
 
 
+def make_auto_list_transform(src: list[str]) -> type[Transform]:
+    @final
+    class AutoList(Transform):
+        default_priority = 340
+
+        def apply(self) -> None:
+            for target in self.document.findall(nodes.enumerated_list):
+                for c in target.children:
+                    assert isinstance(c, nodes.list_item)
+                    line = c.line
+                    assert line
+                    c["auto"] = src[line - 1].lstrip().startswith("#")
+
+    return AutoList
+
+
+@final
 class NoSubstitutionReader(Reader):
+    def __init__(self, src: str) -> None:
+        super().__init__()
+        self.src = src.splitlines()
+
     @override
     def get_transforms(self) -> list[type[Transform]]:
         # Get the default transforms
@@ -57,7 +78,7 @@ class NoSubstitutionReader(Reader):
         # transforms = [
         #     t for t in transforms if t is not Substitutions and t is not Footnotes
         # ]
-        return [DocTitle, DocInfo]
+        return [DocTitle, DocInfo, make_auto_list_transform(self.src)]
 
 
 def main() -> None:
@@ -84,7 +105,7 @@ def main() -> None:
         rst_source = rst_path.read_text(encoding="utf8")
         doctree: nodes.document = publish_doctree(
             rst_source,
-            reader=NoSubstitutionReader(),
+            reader=NoSubstitutionReader(src=rst_source),
         )
 
         reconstructed = ast_to_rst(
