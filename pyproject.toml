@@ -28,13 +28,16 @@ classifiers = [
 ]
 dependencies = ["docutils", "pygments"]
 
-[tool.setuptools.dynamic]
-version = { attr = "restitutor.__version__" }
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+restitute = "restitutor.cli:main"
 
 [project.urls]
 Repository = "https://github.com/KurtBoehm/restitutor"
 Issues = "https://github.com/KurtBoehm/restitutor/issues"
 Homepage = "https://github.com/KurtBoehm/restitutor"
 
-[project.scripts]
-restitute = "restitutor.cli:main"
+[tool.setuptools.dynamic]
+version = { attr = "restitutor.__version__" }

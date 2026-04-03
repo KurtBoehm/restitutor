@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final, override
+from typing import Final, final, override
 
-from docutils import nodes
+from docutils import core, nodes, readers, transforms
+from docutils.transforms.frontmatter import DocInfo, DocTitle
 
 from .context import FmtCtx
 from .nodes import (
@@ -283,13 +284,22 @@ def ast_to_rst(
             buf.append("\n")
 
         case nodes.option_list():
-            # Render a docutils option list in classic definition-like form.
-            # Each child is an option_list_item with an option_group and a description.
-            for idx, item in enumerate(node.children):
+            # Render a docutils option list close to the standard
+            # human-written form, e.g.:
+            #
+            # -a, --all  Description...
+            #
+            # -b FILE  Description...
+            #
+            # We do NOT try to reflow or otherwise "improve" the text; we
+            # simply reconstruct from the doctree while keeping explicit
+            # line breaks and indentation.
+
+            for item in node.children:
                 if not isinstance(item, nodes.option_list_item):
                     continue
 
-                # Find the option_group and description children
+                # Find option_group and description
                 opt_group = None
                 descr = None
                 for child in item.children:
@@ -301,70 +311,57 @@ def ast_to_rst(
                 if opt_group is None or descr is None:
                     continue
 
-                # Collect rendered options (e.g. "-a", "--all", "-b FILE")
+                # Reconstruct the option label text, e.g. "-a, --all", "-b FILE"
                 option_texts: list[str] = []
                 for opt in opt_group.children:
                     if not isinstance(opt, nodes.option):
                         continue
 
-                    # option_string child (e.g. "-a", "--all")
-                    opt_strings = [
+                    # all option_string children: "-a", "--all"
+                    parts = [
                         c.astext()
                         for c in opt.children
                         if isinstance(c, nodes.option_string)
                     ]
-                    base = ", ".join(opt_strings) if opt_strings else ""
 
-                    # optional option_argument child (e.g. "FILE", "<src dest>")
+                    label = ", ".join(parts) if parts else ""
+
+                    # optional argument, with its delimiter
                     arg_nodes = [
                         c for c in opt.children if isinstance(c, nodes.option_argument)
                     ]
                     if arg_nodes:
-                        arg = arg_nodes[0]
-                        delim = arg.get("delimiter", " ")
-                        base = f"{base}{delim}{arg.astext()}"
+                        label = f"{label}{arg_nodes[0].astext()}"
 
-                    option_texts.append(base)
+                    option_texts.append(label)
 
                 opt_label = ", ".join(option_texts)
+                prefix = f"{ctx.head_prefix}{opt_label}  "
 
-                # Render description with indentation so it lines up under the label
-                # Use a context with indent, but not list-prefix.
-                descr_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
-                descr_buf = Buffer()
-                ast_to_rst(descr_buf, descr, descr_ctx, preproc)
-                descr_buf.rstrip()
-                descr_text = str(descr_buf)
-
-                # The description paragraphs rendered by ast_to_rst() already
-                # have newlines. We want the usual “definition list–like” form:
-                # "<options>  First line...\n<indent>More lines..."
-                if "\n" in descr_text:
-                    first_line, rest = descr_text.split("\n", 1)
-                    buf.append(f"{ctx.head_prefix}{opt_label}  {first_line}\n")
-                    if rest.strip():
-                        # Subsequent lines should already be indented by descr_ctx
-                        buf.append(rest + "\n")
-                    else:
-                        buf.append("\n")
-                else:
-                    buf.append(f"{ctx.head_prefix}{opt_label}  {descr_text}\n")
-
-                # Blank line between option_list_items
-                if idx != len(node.children) - 1:
-                    buf.append("\n")
+                descr_ctx = FmtCtx(
+                    head_prefix=prefix,
+                    tail_prefix=" " * len(prefix),
+                    preserve_row_newlines=ctx.preserve_row_newlines,
+                )
+                ast_to_rst(buf, descr, descr_ctx, preproc)
+            buf.append("\n")
 
         case nodes.description():
-            children_to_rst(buf, node, ctx, preproc)
+            children_to_rst(buf, node, ctx, preproc, split_ctx=True)
+            buf.rstrip()
+            buf.append("\n")
 
         case nodes.emphasis():
-            buf.append(f"*{node.astext()}*")
+            text = node.astext()
+            buf.append(f":emphasis:`{text}`" if node.get("role") else f"*{text}*")
 
         case nodes.strong():
-            buf.append(f"**{node.astext()}**")
+            text = node.astext()
+            buf.append(f":strong:`{text}`" if node.get("role") else f"**{text}**")
 
         case nodes.literal():
-            buf.append(f"``{node.astext()}``")
+            text = node.astext()
+            buf.append(f":literal:`{text}`" if node.get("role") else f"``{text}``")
 
         case XRefNode():
             text = node.astext().replace("<", "\\<")
@@ -418,19 +415,9 @@ def ast_to_rst(
             if not body_children:
                 buf.append("\n\n")
             else:
-                # If the first child is a paragraph, its text already starts
-                # at the correct indent, so just append. Otherwise, ensure a
-                # newline before the body.
-                if isinstance(body_children[0], nodes.paragraph):
-                    # Paragraph text already includes the head_prefix; we only
-                    # need to drop the prefix we just wrote (".. [label] ").
-                    # So we move its content to the next line, indented.
-                    # Start with a newline, then the paragraph content.
-                    buf.append("\n")
-
                 # First child is rendered starting on the same line; if it's a
                 # paragraph we strip its final blank line.
-                first_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
+                first_ctx = ctx.with_tail_indent(ctx.tail_prefix + "   ")
                 ast_to_rst(buf, body_children[0], first_ctx, preproc)
 
                 # ast_to_rst(paragraph) ends with "\n\n"; keep only one newline
@@ -496,7 +483,12 @@ def ast_to_rst(
             else:
                 buf.append("\n")
 
-            buf.append("\n")
+            parent = node.parent
+            assert isinstance(parent, nodes.Element)
+            pc = parent.children
+            idx = pc.index(node)
+            if idx + 1 >= len(pc) or not isinstance(pc[idx + 1], nodes.footnote):
+                buf.append("\n")
 
         case nodes.line_block():
             # Top-level indent for this line block
@@ -561,7 +553,11 @@ def ast_to_rst(
         case nodes.Text():
             clean = node.astext().replace("\n", " ")
             clean = re.sub(space_re, " ", clean)
-            buf.append(clean.replace(". ", f".\n{ctx.tail_prefix}"))
+
+            sclean = clean.rstrip()
+            rclean = sclean.replace(". ", f".\n{ctx.tail_prefix}")
+            rclean += clean[len(sclean) :]
+            buf.append(rclean)
 
         case TocTreeNode():
             buf.append(".. toctree::\n")
@@ -716,6 +712,101 @@ def ast_to_rst(
                             and idx < len(row_blank_lines)
                         ):
                             buf.append("\n" * row_blank_lines[idx])
+            elif source_format == "grid-table":
+                # Reconstruct a ``.. table::`` directive with its options,
+                # then the grid table body indented underneath.
+
+                # Title, if we captured one
+                tiles = [
+                    child for child in node.children if isinstance(child, nodes.title)
+                ]
+                if tiles:
+                    [title] = tiles
+                    buf.append(f"{ctx.head_prefix}.. table:: {title.astext()}\n")
+                else:
+                    buf.append(f"{ctx.head_prefix}.. table::\n")
+
+                # Widths option from the directive, if any
+                grid_widths = node.get("grid_widths")
+                if grid_widths is not None:
+                    # docutils normalizes widths to list[int] or "auto"
+                    if isinstance(grid_widths, (list, tuple)):
+                        w_str = " ".join(str(w) for w in grid_widths)
+                    else:
+                        w_str = str(grid_widths)
+                    buf.append(f"{ctx.tail_prefix}   :widths: {w_str}\n")
+
+                buf.append("\n")
+
+                # Now render the *inner* grid table as usual, but indented
+                inner_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
+                clean_ctx = FmtCtx(
+                    head_prefix="",
+                    tail_prefix="",
+                    preserve_row_newlines=ctx.preserve_row_newlines,
+                )
+
+                # Reuse the existing “plain grid table” branch by
+                # calling ast_to_rst on the same node with inner_ctx
+                tgroups = [c for c in node.children if isinstance(c, nodes.tgroup)]
+                if not tgroups:
+                    children_to_rst(buf, node, clean_ctx, preproc)
+                    buf.append("\n")
+                else:
+                    tgroup = tgroups[0]
+                    rows = _split_table_rows(tgroup)
+                    widths = _compute_column_widths(rows, clean_ctx, preproc)
+                    border = inner_ctx.tail_prefix + _render_table_border(widths)
+
+                    thead = [c for c in tgroup.children if isinstance(c, nodes.thead)]
+
+                    def _rows_from_container(
+                        container: nodes.Element,
+                    ) -> list[list[nodes.entry]]:
+                        r: list[list[nodes.entry]] = []
+                        for row in container.children:
+                            if isinstance(row, nodes.row):
+                                r.append(
+                                    [
+                                        e
+                                        for e in row.children
+                                        if isinstance(e, nodes.entry)
+                                    ]
+                                )
+                        return r
+
+                    header_rows: list[list[nodes.entry]] = []
+                    body_rows: list[list[nodes.entry]] = []
+
+                    if thead:
+                        header_rows = _rows_from_container(thead[0])
+                    body_rows = rows[len(header_rows) :] if header_rows else rows
+
+                    buf.append(border)
+
+                    if header_rows:
+                        for row in header_rows:
+                            texts = [_entry_text(e, clean_ctx, preproc) for e in row]
+                            while len(texts) < len(widths):
+                                texts.append("")
+                            buf.append(
+                                inner_ctx.tail_prefix + _render_table_row(texts, widths)
+                            )
+                        buf.append(
+                            inner_ctx.tail_prefix
+                            + _render_table_border(widths, below_header=True)
+                        )
+
+                    for row in body_rows:
+                        texts = [_entry_text(e, clean_ctx, preproc) for e in row]
+                        while len(texts) < len(widths):
+                            texts.append("")
+                        buf.append(
+                            inner_ctx.tail_prefix + _render_table_row(texts, widths)
+                        )
+                        buf.append(inner_ctx.tail_prefix + _render_table_border(widths))
+
+                    buf.append("\n")
             else:
                 tgroups = [c for c in node.children if isinstance(c, nodes.tgroup)]
                 if not tgroups:
@@ -1030,3 +1121,68 @@ def _render_table_row(cells: list[str], widths: list[int]) -> str:
             parts.append("|")
         out_lines.append("".join(parts) + "\n")
     return "".join(out_lines)
+
+
+label_re: Final = re.compile(r"^\s*\.\.\s+_([^:]+):\s*$")
+
+
+def collect_labels(src: str) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for line in src.splitlines():
+        m = label_re.match(line)
+        if not m:
+            continue
+        raw = m.group(1)
+        # Run docutils’ own normalization so you get the same id
+        norm = nodes.make_id(nodes.fully_normalize_name(raw))
+        mapping[norm] = raw
+    return mapping
+
+
+def make_auto_list_transform(src: list[str]) -> type[transforms.Transform]:
+    @final
+    class AutoList(transforms.Transform):
+        default_priority = 340
+
+        def apply(self) -> None:
+            for target in self.document.findall(nodes.enumerated_list):
+                for c in target.children:
+                    assert isinstance(c, nodes.list_item)
+                    line = c.line
+                    assert line
+                    c["auto"] = src[line - 1].lstrip().startswith("#")
+
+    return AutoList
+
+
+@final
+class NoSubstitutionReader(readers.Reader):  # pyright: ignore[reportMissingTypeArgument]
+    def __init__(self, src: str) -> None:
+        super().__init__()
+        self.src = src.splitlines()
+
+    @override
+    def get_transforms(self) -> list[type[transforms.Transform]]:
+        # Get the default transforms
+        # transforms = list(super().get_transforms())
+        # Filter out the Substitutions transform
+        # transforms = [
+        #     t for t in transforms if t is not Substitutions and t is not Footnotes
+        # ]
+        return [DocTitle, DocInfo, make_auto_list_transform(self.src)]
+
+
+def format_rst(rst_source: str, *, clean: bool = True):
+    doctree: nodes.document = core.publish_doctree(
+        rst_source,
+        reader=NoSubstitutionReader(src=rst_source),
+    )
+
+    buf = Buffer()
+    ast_to_rst(
+        buf,
+        doctree,
+        FmtCtx(preserve_row_newlines=not clean),
+        PreprocessInfo(collected_labels=collect_labels(rst_source)),
+    )
+    return buf.data

@@ -10,6 +10,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Final
 
+from docutils import nodes
 from docutils.parsers.rst import languages, roles
 from docutils.parsers.rst.states import Inliner
 
@@ -18,13 +19,13 @@ from .nodes import XRefNode
 title_target_re: Final = re.compile("(.*?)(?<!\x00)<(.*?)>\\s*$")
 
 type XRefTuple = tuple[Sequence[XRefNode], Sequence[XRefNode]]
-type RoleFn = Callable[
+type RoleFn[N1, N2] = Callable[
     [str, str, str, int, Inliner, Mapping[str, Any], Sequence[str]],
-    XRefTuple,
+    tuple[Sequence[N1], Sequence[N2]],
 ]
 
 
-def _make_xref_role(role: str) -> RoleFn:
+def _make_xref_role(role: str) -> RoleFn[XRefNode, XRefNode]:
     """
     Create a role function that mimics Sphinx’s cross-reference behavior
     for a single role, e.g. :func:, :class:, :mod:, etc.
@@ -59,6 +60,25 @@ def _make_xref_role(role: str) -> RoleFn:
     return role_fn
 
 
+def make_generic_role(canonical_name: str, node_class: type[nodes.Node]):
+    def role(
+        role_name: str,
+        rawtext: str,
+        text: str,
+        lineno: int,
+        inliner: Inliner,
+        options: Mapping[str, Any] | None = None,
+        content: Sequence[str] | None = None,
+    ) -> tuple[Sequence[nodes.Node], Sequence[nodes.system_message]]:
+        role = roles.GenericRole(canonical_name, node_class)
+        [a], b = role(role_name, rawtext, text, lineno, inliner, options, content)
+        assert isinstance(a, nodes.TextElement)
+        a["role"] = True
+        return [a], b
+
+    return role
+
+
 def register_sphinx_text_roles() -> None:
     lang = languages.get_language("en")
 
@@ -73,3 +93,12 @@ def register_sphinx_text_roles() -> None:
     for role in ("ref", "doc", "term", "envvar"):
         roles.register_canonical_role(role, _make_xref_role(role))
         lang.roles.setdefault(role, role)
+
+    for canonical_name, node_class in (
+        ("emphasis", nodes.emphasis),
+        ("literal", nodes.literal),
+        ("strong", nodes.strong),
+    ):
+        role = make_generic_role(canonical_name, node_class)
+        roles.register_canonical_role(canonical_name, role)  # pyright: ignore[reportArgumentType]
+        lang.roles.setdefault(canonical_name, canonical_name)

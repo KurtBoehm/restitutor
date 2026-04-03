@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import ClassVar, final, override
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
 from docutils.parsers.rst.directives.body import CodeBlock
-from docutils.parsers.rst.directives.tables import ListTable
+from docutils.parsers.rst.directives.tables import ListTable, RSTTable
 
 from .nodes import (
     ContentsNode,
@@ -32,9 +33,36 @@ def int_or_nothing(argument: str | None) -> int:
     return 999 if not argument else int(argument)
 
 
+class MarkingTable(RSTTable):
+    """
+    A variant of docutils' standard table directive that remembers its
+    title and options on the resulting table node so we can reconstruct
+    the original ``.. table::`` directive.
+    """
+
+    @override
+    def run(self) -> Sequence[nodes.table | nodes.system_message]:
+        # Let the base class do all the hard work
+        [node] = super().run()
+        assert isinstance(node, nodes.table)
+        # Mark that this came from a ``.. table::`` directive
+        node["source_format"] = "grid-table"
+        # Store the title text, if any
+        if "title" in node:
+            # docutils stores the title node under 'title'
+            title_node = node["title"]
+            if isinstance(title_node, nodes.title):
+                node["table_title"] = title_node.astext()
+        # Preserve options we care about (currently: widths)
+        # ``self.options`` contains parsed directive options.
+        if "widths" in self.options:
+            node["grid_widths"] = self.options["widths"]
+        return [node]
+
+
 class MarkingListTable(ListTable):
     @override
-    def run(self):
+    def run(self) -> Sequence[nodes.table | nodes.system_message]:
         result = super().run()
         for node in result:
             if isinstance(node, nodes.table):
@@ -289,11 +317,12 @@ class CurrentModuleDirective(Directive):
 
 def register_directives() -> None:
     """Register our custom directives with docutils."""
-    directives.register_directive("contents", ContentsDirective)
-    directives.register_directive("list-table", MarkingListTable)
-    directives.register_directive("toctree", TocTreeDirective)
     directives.register_directive("code", RememberingCodeBlock)
     directives.register_directive("code-block", RememberingCodeBlock)
+    directives.register_directive("contents", ContentsDirective)
+    directives.register_directive("list-table", MarkingListTable)
+    directives.register_directive("table", MarkingTable)
+    directives.register_directive("toctree", TocTreeDirective)
 
     doxys: list[type[DoxyDirective]] = [
         DoxyClassDirective,
