@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import ClassVar, final, override
+from typing import ClassVar, Final, final, override
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
@@ -315,34 +315,40 @@ class CurrentModuleDirective(Directive):
         return [node]
 
 
+_base_directives: Final[dict[str, type[Directive]]] = {
+    "code": RememberingCodeBlock,
+    "code-block": RememberingCodeBlock,
+    "contents": ContentsDirective,
+    "list-table": MarkingListTable,
+    "table": MarkingTable,
+    "toctree": TocTreeDirective,
+    "currentmodule": CurrentModuleDirective,
+}
+_doxy_directives: Final[list[type[DoxyDirective]]] = [
+    DoxyClassDirective,
+    DoxyConceptDirective,
+    DoxyFunctionDirective,
+    DoxyStructDirective,
+    DoxyTypedefDirective,
+    DoxyVariableDirective,
+]
+_cpp_directive_names: Final[list[str]] = [
+    "cpp:function",
+    "cpp:class",
+    "cpp:struct",
+    "cpp:var",
+    "cpp:type",
+    "cpp:namespace",
+]
+
+
 def register_directives() -> None:
     """Register our custom directives with docutils."""
-    directives.register_directive("code", RememberingCodeBlock)
-    directives.register_directive("code-block", RememberingCodeBlock)
-    directives.register_directive("contents", ContentsDirective)
-    directives.register_directive("list-table", MarkingListTable)
-    directives.register_directive("table", MarkingTable)
-    directives.register_directive("toctree", TocTreeDirective)
+    for name, directive in _base_directives.items():
+        directives.register_directive(name, directive)
 
-    doxys: list[type[DoxyDirective]] = [
-        DoxyClassDirective,
-        DoxyConceptDirective,
-        DoxyFunctionDirective,
-        DoxyStructDirective,
-        DoxyTypedefDirective,
-        DoxyVariableDirective,
-    ]
-    for directive in doxys:
+    for directive in _doxy_directives:
         directives.register_directive(directive.node.directive, directive)
 
-    for directive in [
-        "cpp:function",
-        "cpp:class",
-        "cpp:struct",
-        "cpp:var",
-        "cpp:type",
-        "cpp:namespace",
-    ]:
+    for directive in _cpp_directive_names:
         directives.register_directive(directive, CppDirective)
-
-    directives.register_directive("currentmodule", CurrentModuleDirective)

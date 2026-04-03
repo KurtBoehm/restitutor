@@ -61,6 +61,8 @@ def _make_xref_role(role: str) -> RoleFn[XRefNode, XRefNode]:
 
 
 def make_generic_role(canonical_name: str, node_class: type[nodes.Node]):
+    generic = roles.GenericRole(canonical_name, node_class)
+
     def role(
         role_name: str,
         rawtext: str,
@@ -70,8 +72,7 @@ def make_generic_role(canonical_name: str, node_class: type[nodes.Node]):
         options: Mapping[str, Any] | None = None,
         content: Sequence[str] | None = None,
     ) -> tuple[Sequence[nodes.Node], Sequence[nodes.system_message]]:
-        role = roles.GenericRole(canonical_name, node_class)
-        [a], b = role(role_name, rawtext, text, lineno, inliner, options, content)
+        [a], b = generic(role_name, rawtext, text, lineno, inliner, options, content)
         assert isinstance(a, nodes.TextElement)
         a["role"] = True
         return [a], b

@@ -53,27 +53,6 @@ class Buffer:
 
 adornments: Final[list[str]] = ["#", "*", "=", "-", "^"]
 space_re: Final[re.Pattern[str]] = re.compile("\\s+")
-admonition_map: Final[dict[type[nodes.Admonition], str]] = {
-    nodes.note: "note",
-    nodes.warning: "warning",
-    nodes.tip: "tip",
-    nodes.hint: "hint",
-    nodes.caution: "caution",
-    nodes.danger: "danger",
-    nodes.error: "error",
-    nodes.attention: "attention",
-    nodes.important: "important",
-}
-bibliographic_map: Final[dict[type[nodes.Node], str]] = {
-    nodes.author: "Author",
-    nodes.organization: "Organization",
-    nodes.contact: "Contact",
-    nodes.version: "Version",
-    nodes.revision: "Revision",
-    nodes.status: "Status",
-    nodes.date: "Date",
-    nodes.copyright: "Copyright",
-}
 
 
 def _to_roman(n: int) -> str:
@@ -136,10 +115,14 @@ def ast_to_rst(
             buf.append("\n")
 
         case nodes.docinfo():
-            width = max(len(bibliographic_map[type(child)]) for child in node.children)
+            dinfos: list[nodes.TextElement] = []
+            for c in node.children:
+                assert isinstance(c, nodes.TextElement)
+                dinfos.append(c)
+            width = max(len(child.tagname) for child in dinfos)
             width += 2
-            for child in node.children:
-                key = f":{bibliographic_map[type(child)]}:"
+            for child in dinfos:
+                key = f":{child.tagname.capitalize()}:"
                 buf.append(f"{key:<{width}} {child.astext()}\n")
             buf.append("\n")
 
@@ -713,10 +696,7 @@ def ast_to_rst(
                         ):
                             buf.append("\n" * row_blank_lines[idx])
             elif source_format == "grid-table":
-                # Reconstruct a ``.. table::`` directive with its options,
-                # then the grid table body indented underneath.
-
-                # Title, if we captured one
+                # Reconstruct .. table:: wrapper and delegate grid body
                 tiles = [
                     child for child in node.children if isinstance(child, nodes.title)
                 ]
@@ -726,147 +706,21 @@ def ast_to_rst(
                 else:
                     buf.append(f"{ctx.head_prefix}.. table::\n")
 
-                # Widths option from the directive, if any
                 grid_widths = node.get("grid_widths")
                 if grid_widths is not None:
-                    # docutils normalizes widths to list[int] or "auto"
                     if isinstance(grid_widths, (list, tuple)):
                         w_str = " ".join(str(w) for w in grid_widths)
                     else:
                         w_str = str(grid_widths)
                     buf.append(f"{ctx.tail_prefix}   :widths: {w_str}\n")
-
                 buf.append("\n")
 
-                # Now render the *inner* grid table as usual, but indented
+                # Reuse generic grid renderer for the inner table
                 inner_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
-                clean_ctx = FmtCtx(
-                    head_prefix="",
-                    tail_prefix="",
-                    preserve_row_newlines=ctx.preserve_row_newlines,
-                )
+                _render_grid_table(buf, node, inner_ctx, preproc)
 
-                # Reuse the existing “plain grid table” branch by
-                # calling ast_to_rst on the same node with inner_ctx
-                tgroups = [c for c in node.children if isinstance(c, nodes.tgroup)]
-                if not tgroups:
-                    children_to_rst(buf, node, clean_ctx, preproc)
-                    buf.append("\n")
-                else:
-                    tgroup = tgroups[0]
-                    rows = _split_table_rows(tgroup)
-                    widths = _compute_column_widths(rows, clean_ctx, preproc)
-                    border = inner_ctx.tail_prefix + _render_table_border(widths)
-
-                    thead = [c for c in tgroup.children if isinstance(c, nodes.thead)]
-
-                    def _rows_from_container(
-                        container: nodes.Element,
-                    ) -> list[list[nodes.entry]]:
-                        r: list[list[nodes.entry]] = []
-                        for row in container.children:
-                            if isinstance(row, nodes.row):
-                                r.append(
-                                    [
-                                        e
-                                        for e in row.children
-                                        if isinstance(e, nodes.entry)
-                                    ]
-                                )
-                        return r
-
-                    header_rows: list[list[nodes.entry]] = []
-                    body_rows: list[list[nodes.entry]] = []
-
-                    if thead:
-                        header_rows = _rows_from_container(thead[0])
-                    body_rows = rows[len(header_rows) :] if header_rows else rows
-
-                    buf.append(border)
-
-                    if header_rows:
-                        for row in header_rows:
-                            texts = [_entry_text(e, clean_ctx, preproc) for e in row]
-                            while len(texts) < len(widths):
-                                texts.append("")
-                            buf.append(
-                                inner_ctx.tail_prefix + _render_table_row(texts, widths)
-                            )
-                        buf.append(
-                            inner_ctx.tail_prefix
-                            + _render_table_border(widths, below_header=True)
-                        )
-
-                    for row in body_rows:
-                        texts = [_entry_text(e, clean_ctx, preproc) for e in row]
-                        while len(texts) < len(widths):
-                            texts.append("")
-                        buf.append(
-                            inner_ctx.tail_prefix + _render_table_row(texts, widths)
-                        )
-                        buf.append(inner_ctx.tail_prefix + _render_table_border(widths))
-
-                    buf.append("\n")
             else:
-                tgroups = [c for c in node.children if isinstance(c, nodes.tgroup)]
-                if not tgroups:
-                    # Empty or unusual table – just drop children
-                    children_to_rst(buf, node, ctx, preproc)
-                    return
-
-                tgroup = tgroups[0]
-                rows = _split_table_rows(tgroup)
-                widths = _compute_column_widths(rows, ctx, preproc)
-                border = ctx.tail_prefix + _render_table_border(widths)
-
-                # Separate header (thead) from body if present
-                thead = [c for c in tgroup.children if isinstance(c, nodes.thead)]
-
-                def _rows_from_container(
-                    container: nodes.Element,
-                ) -> list[list[nodes.entry]]:
-                    r: list[list[nodes.entry]] = []
-                    for row in container.children:
-                        if isinstance(row, nodes.row):
-                            r.append(
-                                [e for e in row.children if isinstance(e, nodes.entry)]
-                            )
-                    return r
-
-                header_rows: list[list[nodes.entry]] = []
-                body_rows: list[list[nodes.entry]] = []
-
-                if thead:
-                    header_rows = _rows_from_container(thead[0])
-                # All other rows (including those in tbody) go to body
-                body_rows = rows[len(header_rows) :] if header_rows else rows
-
-                # Render table
-                buf.append(border)
-
-                # Header
-                if header_rows:
-                    for row in header_rows:
-                        texts = [_entry_text(e, ctx, preproc) for e in row]
-                        # pad with empty cells if short
-                        while len(texts) < len(widths):
-                            texts.append("")
-                        buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
-                    # Header separator
-                    buf.append(
-                        ctx.tail_prefix
-                        + _render_table_border(widths, below_header=True)
-                    )
-
-                # Body
-                for row in body_rows:
-                    texts = [_entry_text(e, ctx, preproc) for e in row]
-                    while len(texts) < len(widths):
-                        texts.append("")
-                    buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
-                    buf.append(ctx.tail_prefix + _render_table_border(widths))
-
-                buf.append("\n")
+                _render_grid_table(buf, node, ctx, preproc)
 
         case (
             nodes.tgroup()
@@ -906,29 +760,14 @@ def ast_to_rst(
 
         case nodes.admonition():
             # Generic admonition with an explicit title
-            # The first child is typically a title node.
-            title_text = ""
-            body_children: list[nodes.Node] = []
-
+            # The first child is optionally a title node.
             if node.children and isinstance(node.children[0], nodes.title):
                 title_text = node.children[0].astext()
-                body_children = node.children[1:]
             else:
                 # Fallback if title is missing/unusual
                 title_text = node.get("title", "Note")
-                body_children = list(node.children)
 
-            # Directive line
-            buf.append(f"{ctx.head_prefix}.. admonition:: {title_text}\n\n")
-
-            # Body is indented under the directive
-            body_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
-            for child in body_children:
-                ast_to_rst(buf, child, body_ctx, preproc)
-
-            # Ensure a blank line after the admonition block
-            buf.rstrip()
-            buf.append("\n\n")
+            _render_admonition(buf, node, ctx, "admonition", preproc, title=title_text)
 
         case (
             nodes.attention()
@@ -941,15 +780,7 @@ def ast_to_rst(
             | nodes.hint()
             | nodes.warning()
         ):
-            # Look up the directive keyword based on the node’s class
-            buf.append(f"{ctx.head_prefix}.. {admonition_map[type(node)]}::\n\n")
-
-            body_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
-            for child in node.children:
-                ast_to_rst(buf, child, body_ctx, preproc)
-
-            buf.rstrip()
-            buf.append("\n\n")
+            _render_admonition(buf, node, ctx, node.tagname, preproc)
 
         case nodes.section():
             children_to_rst(buf, node, ctx, preproc)
@@ -1048,9 +879,6 @@ def _split_table_rows(tgroup: nodes.tgroup) -> list[list[nodes.entry]]:
 
 
 def _entry_text(entry: nodes.entry, ctx: FmtCtx, preproc: PreprocessInfo) -> str:
-    # Import here to avoid circular import with formatting.ast_to_rst
-    from .formatting import children_to_rst
-
     # Render children as RST, then strip extra blank lines
     raw = Buffer()
     children_to_rst(raw, entry, ctx, preproc)
@@ -1084,6 +912,69 @@ def _compute_column_widths(
 
     # Ensure each column has at least width 1
     return [max(w, 1) for w in widths]
+
+
+def _separate_header_body(
+    tgroup: nodes.tgroup,
+) -> tuple[list[list[nodes.entry]], list[list[nodes.entry]]]:
+    rows = _split_table_rows(tgroup)
+    theads = [c for c in tgroup.children if isinstance(c, nodes.thead)]
+
+    header_rows: list[list[nodes.entry]] = []
+    if theads:
+        r: list[list[nodes.entry]] = []
+        for row in theads[0].children:
+            if isinstance(row, nodes.row):
+                r.append([e for e in row.children if isinstance(e, nodes.entry)])
+        header_rows = r
+
+    body_rows = rows[len(header_rows) :] if header_rows else rows
+    return header_rows, body_rows
+
+
+def _render_grid_table(
+    buf: Buffer,
+    node: nodes.table,
+    ctx: FmtCtx,
+    preproc: PreprocessInfo,
+) -> None:
+    tgroups = [c for c in node.children if isinstance(c, nodes.tgroup)]
+    if not tgroups:
+        children_to_rst(buf, node, ctx, preproc)
+        buf.append("\n")
+        return
+
+    clean_ctx = FmtCtx(
+        head_prefix="",
+        tail_prefix="",
+        preserve_row_newlines=ctx.preserve_row_newlines,
+    )
+
+    tgroup = tgroups[0]
+    rows = _split_table_rows(tgroup)
+    widths = _compute_column_widths(rows, clean_ctx, preproc)
+    border = ctx.tail_prefix + _render_table_border(widths)
+
+    header_rows, body_rows = _separate_header_body(tgroup)
+
+    buf.append(border)
+
+    if header_rows:
+        for row in header_rows:
+            texts = [_entry_text(e, clean_ctx, preproc) for e in row]
+            while len(texts) < len(widths):
+                texts.append("")
+            buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
+        buf.append(ctx.tail_prefix + _render_table_border(widths, below_header=True))
+
+    for row in body_rows:
+        texts = [_entry_text(e, clean_ctx, preproc) for e in row]
+        while len(texts) < len(widths):
+            texts.append("")
+        buf.append(ctx.tail_prefix + _render_table_row(texts, widths))
+        buf.append(ctx.tail_prefix + _render_table_border(widths))
+
+    buf.append("\n")
 
 
 def _render_table_border(widths: list[int], below_header: bool = False) -> str:
@@ -1121,6 +1012,33 @@ def _render_table_row(cells: list[str], widths: list[int]) -> str:
             parts.append("|")
         out_lines.append("".join(parts) + "\n")
     return "".join(out_lines)
+
+
+def _render_admonition(
+    buf: Buffer,
+    node: nodes.Element,
+    ctx: FmtCtx,
+    kind: str,
+    preproc: PreprocessInfo,
+    *,
+    title: str | None = None,
+) -> None:
+    # kind is e.g. "note", "warning", or "admonition"
+    if title is not None:
+        buf.append(f"{ctx.head_prefix}.. {kind}:: {title}\n\n")
+    else:
+        buf.append(f"{ctx.head_prefix}.. {kind}::\n\n")
+
+    body_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
+    for child in node.children:
+        # skip the explicit title node for generic admonitions,
+        # the title is already rendered on the directive line
+        if isinstance(child, nodes.title):
+            continue
+        ast_to_rst(buf, child, body_ctx, preproc)
+
+    buf.rstrip()
+    buf.append("\n\n")
 
 
 label_re: Final = re.compile(r"^\s*\.\.\s+_([^:]+):\s*$")

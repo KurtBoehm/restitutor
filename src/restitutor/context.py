@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(kw_only=True)
@@ -30,36 +30,40 @@ class FmtCtx:
     def prefix(self, index: int) -> str:
         return self.head_prefix if index == 0 else self.tail_prefix
 
+    def _clone(
+        self,
+        *,
+        head_prefix: str | None = None,
+        tail_prefix: str | None = None,
+    ) -> FmtCtx:
+        return replace(
+            self,
+            head_prefix=self.head_prefix if head_prefix is None else head_prefix,
+            tail_prefix=self.tail_prefix if tail_prefix is None else tail_prefix,
+        )
+
     def with_indent(self, extra: str) -> FmtCtx:
-        """Return a new context with increased indent (for child content)."""
-        return FmtCtx(
+        return self._clone(
             head_prefix=self.head_prefix + extra,
             tail_prefix=self.tail_prefix + extra,
-            preserve_row_newlines=self.preserve_row_newlines,
         )
 
     def with_tail_indent(self, extra: str) -> FmtCtx:
-        """Return a new context with increased indent (for child content)."""
-        return FmtCtx(
-            head_prefix=self.head_prefix,
+        return self._clone(
             tail_prefix=self.tail_prefix + extra,
-            preserve_row_newlines=self.preserve_row_newlines,
         )
 
     def with_list_prefix(self, prefix: str) -> FmtCtx:
-        """Return a new context for a list item at the same indent."""
-        return FmtCtx(
+        return self._clone(
             head_prefix=self.head_prefix + prefix,
             tail_prefix=self.tail_prefix + " " * len(prefix),
-            preserve_row_newlines=self.preserve_row_newlines,
         )
 
     @property
     def tail_ctx(self) -> FmtCtx:
-        return FmtCtx(
+        return self._clone(
             head_prefix=self.tail_prefix,
             tail_prefix=self.tail_prefix,
-            preserve_row_newlines=self.preserve_row_newlines,
         )
 
     def ctx(self, index: int) -> FmtCtx:
