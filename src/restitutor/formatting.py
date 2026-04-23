@@ -715,8 +715,7 @@ def ast_to_rst(
                 if tgroups:
                     tgroup = tgroups[0]
 
-                    # Collect rendered rows as strings.
-                    rendered_rows: list[str] = []
+                    idx = 0
 
                     for part in tgroup.children:
                         if isinstance(part, nodes.colspec):
@@ -734,35 +733,24 @@ def ast_to_rst(
                                 if isinstance(e, nodes.entry)
                             ]
 
-                            row_buf: list[str] = []
-
                             if entries:
                                 cell_ctx = ctx.with_list_prefix("   * - ")
                                 ast_to_rst(buf, entries[0], cell_ctx, preproc)
                                 buf.rstrip()
                                 buf.append("\n")
-                            else:
-                                row_buf.append("\n")
 
-                            for entry in entries[1:]:
-                                cell_ctx = ctx.with_list_prefix("     - ")
-                                ast_to_rst(buf, entry, cell_ctx, preproc)
-                                buf.rstrip()
-                                buf.append("\n")
+                                for entry in entries[1:]:
+                                    cell_ctx = ctx.with_list_prefix("     - ")
+                                    ast_to_rst(buf, entry, cell_ctx, preproc)
+                                    buf.rstrip()
+                                    buf.append("\n")
 
-                            rendered_rows.append("".join(row_buf))
+                                if ctx.preserve_row_newlines and idx < len(
+                                    row_blank_lines
+                                ):
+                                    buf.append("\n" * row_blank_lines[idx])
 
-                    # Emit rows, inserting extra blank lines according to
-                    # ``row_blank_lines`` captured in :class:`MarkingListTable`.
-                    for idx, row_text in enumerate(rendered_rows):
-                        buf.append(row_text)
-                        # Between rows only; no extra after the last one.
-                        if (
-                            ctx.preserve_row_newlines
-                            and idx < len(rendered_rows) - 1
-                            and idx < len(row_blank_lines)
-                        ):
-                            buf.append("\n" * row_blank_lines[idx])
+                            idx += 1
             elif source_format == "grid-table":
                 # Reconstruct ``.. table::`` wrapper and delegate grid body.
                 tiles = [
