@@ -71,6 +71,19 @@ class Buffer:
 adornments: Final[list[str]] = ["#", "*", "=", "-", "^"]
 # Collapse all whitespace to single spaces in text nodes.
 space_re: Final[re.Pattern[str]] = re.compile("\\s+")
+# Abbreviations that should *not* cause a line break after the period.
+no_break_abbr: Final[list[str]] = [
+    "e.g.",
+    "i.e.",
+    "v.s.",
+    "vs.",
+    "etc.",
+    "cf.",
+    "Dr.",
+    "Mr.",
+    "Ms.",
+    "Mrs.",
+]
 
 
 def _to_roman(n: int) -> str:
@@ -564,13 +577,28 @@ def ast_to_rst(
             children_to_rst(buf, node, ctx, preproc)
 
         case nodes.Text():
-            # Collapse whitespace and insert line breaks after periods.
+            # Collapse whitespace and insert line breaks after periods,
+            # but avoid breaking after common abbreviations like "e.g.", "v.s.", etc.
             clean = node.astext().replace("\n", " ")
             clean = re.sub(space_re, " ", clean)
 
             sclean = clean.rstrip()
-            rclean = sclean.replace(". ", f".\n{ctx.tail_prefix}")
+
+            # Build a pattern that matches ". " not preceded by one of the abbreviations
+            # in a very simple way: we do a callback that inspects the left context.
+            def _break_match(m: re.Match[str]) -> str:
+                start = m.start()
+                # Look back up to, say, 5 characters for an abbreviation
+                left = sclean[max(0, start - 5) : start + 1]  # include the '.' itself
+                if any(left.endswith(abbr) for abbr in no_break_abbr):
+                    # Keep as plain space
+                    return ". "
+                return f".\n{ctx.tail_prefix}"
+
+            # Apply only to the trimmed part; preserve trailing spaces as before.
+            rclean = re.sub(r"\. ", _break_match, sclean)
             rclean += clean[len(sclean) :]
+
             buf.append(rclean)
 
         case TocTreeNode():
