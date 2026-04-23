@@ -11,13 +11,12 @@ reStructuredText Test Document
    :local:
    :depth: 2
 
-#####################
+*********************
 Section 1: Basic Text
-#####################
+*********************
 
-**********
 Paragraphs
-**********
+==========
 
 This is a normal paragraph.
 It has several sentences to demonstrate line wrapping and spacing.
@@ -25,9 +24,8 @@ reStructuredText uses blank lines to separate paragraphs.
 
 This is a second paragraph, separated by a blank line from the first one.
 
-*************
 Inline markup
-*************
+=============
 
 *Emphasis* can be created with single asterisks, and **strong emphasis** uses double asterisks.
 
@@ -42,13 +40,12 @@ Anonymous references work too: `Python home page`__.
 
 __ https://www.python.org
 
-################
+****************
 Section 2: Lists
-################
+****************
 
-************
 Bullet lists
-************
+============
 
 - First bullet item
 - Second bullet item with a second paragraph.
@@ -59,9 +56,8 @@ Bullet lists
   - Nested bullet item 1
   - Nested bullet item 2
 
-****************
 Enumerated lists
-****************
+================
 
 1. First item
 2. Second item
@@ -77,9 +73,8 @@ or automatic numbering:
 #. Auto-numbered item one
 #. Auto-numbered item two
 
-****************
 Definition lists
-****************
+================
 
 term 1
    Definition of term 1 goes here.
@@ -90,13 +85,12 @@ term 2
 
    This is a second paragraph of the same definition.
 
-##################################
+**********************************
 Section 3: Literal Blocks and Code
-##################################
+**********************************
 
-**********************
 Indented literal block
-**********************
+======================
 
 A literal block is introduced by a double-colon at the end of the preceding paragraph::
 
@@ -104,9 +98,8 @@ A literal block is introduced by a double-colon at the end of the preceding para
    It preserves line breaks and indentation.
    No further markup is processed *here*.
 
-*************************
 Code block with directive
-*************************
+=========================
 
 .. code-block:: python
 
@@ -120,13 +113,12 @@ Code block with directive
    if __name__ == "__main__":
        print(fibonacci(10))
 
-#################
+*****************
 Section 4: Tables
-#################
+*****************
 
-************
 Simple table
-************
+============
 
 +----------+----------+----------+
 | Header 1 | Header 2 | Header 3 |
@@ -136,9 +128,8 @@ Simple table
 | Cell 2,1 | Cell 2,2 | Cell 2,3 |
 +----------+----------+----------+
 
-**********
 Grid table
-**********
+==========
 
 .. table:: Example Grid Table
    :widths: 20 20 20
@@ -151,9 +142,9 @@ Grid table
    | Row 2      | Data       | More Data    |
    +------------+------------+--------------+
 
-######################
+**********************
 Section 5: Admonitions
-######################
+**********************
 
 .. note::
 
@@ -169,42 +160,38 @@ Section 5: Admonitions
 
    You can use tips for best practices and recommendations.
 
-************************
 Custom titled admonition
-************************
+========================
 
 .. admonition:: Custom Title
 
    This is a custom admonition with a specific title.
 
-###################################
+***********************************
 Section 6: Images and Substitutions
-###################################
+***********************************
 
-******
 Images
-******
+======
 
 .. image:: https://www.python.org/static/community_logos/python-logo.png
    :alt: Python logo
    :width: 200
    :align: center
 
-************************
 Substitution definitions
-************************
+========================
 
 Here is some text with a |substitution| inside.
 
 .. |substitution| replace:: substituted **inline** text
 
-##################################
+**********************************
 Section 7: Footnotes and Citations
-##################################
+**********************************
 
-*********
 Footnotes
-*********
+=========
 
 This sentence has a footnote reference. [1]_
 
@@ -213,29 +200,26 @@ This sentence has an auto-numbered footnote reference. [#]_
 .. [1] This is the text of footnote 1.
 .. [#] This is an auto-numbered footnote.
 
-*********
 Citations
-*********
+=========
 
 This is a citation reference [Ref01]_.
 You can list the citations anywhere in the document.
 
 .. [Ref01] Example reference in a bibliography style format.
 
-##################################
+**********************************
 Section 8: Fields and Option Lists
-##################################
+**********************************
 
-***********
 Field lists
-***********
+===========
 
 :field name: field body
 :another:    another field body
 
-************
 Option lists
-************
+============
 
 Command-line options can be documented like this:
 
@@ -246,13 +230,12 @@ Command-line options can be documented like this:
 -f <[path]file>  Option argument placeholders must start with a letter or be wrapped in angle brackets.
 -d <src dest>  Angle brackets are also required if an option expects more than one argument.
 
-###############################
+*******************************
 Section 9: Directives and Roles
-###############################
+*******************************
 
-*************************
 Literal include (example)
-*************************
+=========================
 
 .. code-block:: rst
 
@@ -260,21 +243,19 @@ Literal include (example)
 
       This is an example of a directive *inside* a literal code block.
 
-***********************
 Named hyperlink targets
-***********************
+=======================
 
 This is a link to the `Target Section`_ defined later.
 
-*****
 Roles
-*****
+=====
 
 This is an example of using roles: :emphasis:`emphasized text`, :strong:`strong text`, and :literal:`inline literal` via roles.
 
-##########################
+**************************
 Section 10: Target Section
-##########################
+**************************
 
 .. _Target Section:
 

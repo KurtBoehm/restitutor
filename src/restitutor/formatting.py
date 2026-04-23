@@ -121,6 +121,8 @@ def children_to_rst(
     node: nodes.Node,
     ctx: FmtCtx,
     preproc: PreprocessInfo,
+    *,
+    rstrip: bool = False,
     split_ctx: bool = False,
 ) -> None:
     """
@@ -132,12 +134,13 @@ def children_to_rst(
     :param preproc: Preprocessing metadata.
     :param split_ctx: If ``True``, use tail context for lines after the first.
     """
+    n = len(node.children)
     if split_ctx:
         for i, child in enumerate(node.children):
-            ast_to_rst(buf, child, ctx.ctx(i), preproc)
+            ast_to_rst(buf, child, ctx.ctx(i), preproc, rstrip=(i + 1 == n) and rstrip)
     else:
-        for child in node.children:
-            ast_to_rst(buf, child, ctx, preproc)
+        for i, child in enumerate(node.children):
+            ast_to_rst(buf, child, ctx, preproc, rstrip=(i + 1 == n) and rstrip)
 
 
 @dataclass
@@ -158,6 +161,8 @@ def ast_to_rst(
     node: nodes.Node,
     ctx: FmtCtx,
     preproc: PreprocessInfo,
+    *,
+    rstrip: bool = False,
 ) -> None:
     """
     Convert a subset of docutils nodes back into reST.
@@ -166,11 +171,11 @@ def ast_to_rst(
     :param node: Current docutils node.
     :param ctx: Formatting context.
     :param preproc: Preprocessing metadata (labels, etc.).
+    :param rstrip: Whether to stip spaces at the end (if allowed by the construct).
     """
     match node:
         case nodes.document():
-            children_to_rst(buf, node, ctx, preproc)
-            # Single trailing newline, strip trailing spaces in the whole doc.
+            children_to_rst(buf, node, ctx, preproc, rstrip=True)
             buf.rstrip()
             buf.append("\n")
 
@@ -222,8 +227,9 @@ def ast_to_rst(
         case nodes.paragraph():
             # Paragraph with automatic double newline spacing.
             buf.append(ctx.head_prefix)
-            children_to_rst(buf, node, ctx, preproc)
-            buf.append("\n\n")
+            children_to_rst(buf, node, ctx, preproc, rstrip=True)
+            if not rstrip:
+                buf.append("\n\n")
 
         case nodes.literal_block():
             # Distinguish code-block from "::" idiom if we know the language.
@@ -249,10 +255,10 @@ def ast_to_rst(
 
         case nodes.bullet_list():
             # Simple ``-`` bullet list.
-            for child in node.children:
-                item_ctx = ctx.with_list_prefix("- ")
-                ast_to_rst(buf, child, item_ctx, preproc)
-            buf.append("\n")
+            item_ctx = ctx.with_list_prefix("- ")
+            children_to_rst(buf, node, item_ctx, preproc, rstrip=True)
+            buf.rstrip()
+            buf.append("\n\n")
 
         case nodes.enumerated_list():
             # Reconstruct enumerator form from enumtype/start/suffix.
@@ -283,22 +289,9 @@ def ast_to_rst(
 
         case nodes.list_item():
             # Render the list item content, potentially with a split context.
-            children_to_rst(buf, node, ctx, preproc, split_ctx=True)
+            children_to_rst(buf, node, ctx, preproc, split_ctx=True, rstrip=True)
 
-            # If the item ends with exactly two newlines, trim one so we have
-            # a single blank line by default.
-            buf.rstrip()
-            buf.append("\n")
-
-            # Detect whether the last child is itself a list (bullet or enum).
-            last_child = node.children[-1] if node.children else None
-            is_nested_list = isinstance(
-                last_child, (nodes.bullet_list, nodes.enumerated_list)
-            )
-
-            # If this item ends with a nested list, ensure there is an extra
-            # blank line after it so that following content is visually separated.
-            if is_nested_list:
+            if not rstrip and not isinstance(node.children[-1], nodes.bullet_list):
                 buf.append("\n")
 
         case nodes.field_list():
@@ -325,8 +318,14 @@ def ast_to_rst(
 
                 # Render body children with an extra indent.
                 body_ctx = ctx.with_tail_indent("   ")
-                children_to_rst(buf, body, body_ctx, preproc, split_ctx=True)
-                buf.rstrip()
+                children_to_rst(
+                    buf,
+                    body,
+                    body_ctx,
+                    preproc,
+                    split_ctx=True,
+                    rstrip=True,
+                )
 
                 # Emit the field header.
                 buf.append("\n")
@@ -388,8 +387,7 @@ def ast_to_rst(
 
         case nodes.description():
             # Description text from option lists/definitions.
-            children_to_rst(buf, node, ctx, preproc, split_ctx=True)
-            buf.rstrip()
+            children_to_rst(buf, node, ctx, preproc, split_ctx=True, rstrip=True)
             buf.append("\n")
 
         case nodes.emphasis():
@@ -462,10 +460,7 @@ def ast_to_rst(
             else:
                 # First child is rendered starting on the same line.
                 first_ctx = ctx.with_tail_indent(ctx.tail_prefix + "   ")
-                ast_to_rst(buf, body_children[0], first_ctx, preproc)
-
-                # ``paragraph`` handling gives ``\n\n``; keep only one newline.
-                buf.rstrip()
+                ast_to_rst(buf, body_children[0], first_ctx, preproc, rstrip=True)
                 buf.append("\n")
 
                 # Remaining children follow, fully indented.
@@ -505,8 +500,7 @@ def ast_to_rst(
                 first = body_children[0]
                 if isinstance(first, nodes.paragraph):
                     # Inline the paragraph text.
-                    children_to_rst(buf, first, ctx, preproc)
-                    buf.rstrip()
+                    children_to_rst(buf, first, ctx, preproc, rstrip=True)
                     buf.append("\n")
                 else:
                     # Non‑paragraph: put a newline and indent as a block.
@@ -549,11 +543,10 @@ def ast_to_rst(
             for item in node.children:
                 if not isinstance(item, nodes.definition_list_item):
                     continue
-                if not first:
-                    buf.append("\n")
                 first = False
-                ast_to_rst(buf, item, ctx, preproc)
-            buf.append("\n")
+                ast_to_rst(buf, item, ctx, preproc, rstrip=True)
+                buf.rstrip()
+                buf.append("\n\n")
 
         case nodes.definition_list_item():
             # A definition list item has one or more terms and definitions.
@@ -563,15 +556,13 @@ def ast_to_rst(
             # Term on its own line (no indentation).
             for i, term in enumerate(term_nodes):
                 buf.append(ctx.prefix(i))
-                children_to_rst(buf, term, ctx, preproc)
-                buf.rstrip()
+                children_to_rst(buf, term, ctx, preproc, rstrip=True)
                 buf.append("\n")
 
             # Definitions indented by 3 spaces as standard in reST.
             def_ctx = ctx.with_indent(ctx.tail_prefix + "   ")
             for d in def_nodes:
-                ast_to_rst(buf, d, def_ctx, preproc)
-                buf.rstrip()
+                ast_to_rst(buf, d, def_ctx, preproc, rstrip=True)
                 buf.append("\n")
 
         case nodes.term() | nodes.definition():
@@ -583,7 +574,6 @@ def ast_to_rst(
             # but avoid breaking after common abbreviations like "e.g.", "v.s.", etc.
             clean = node.astext().replace("\n", " ")
             clean = re.sub(space_re, " ", clean)
-
             sclean = clean.rstrip()
 
             # Build a pattern that matches ". " not preceded by one of the abbreviations
@@ -600,6 +590,9 @@ def ast_to_rst(
             # Apply only to the trimmed part; preserve trailing spaces as before.
             rclean = re.sub(r"\. ", _break_match, sclean)
             rclean += clean[len(sclean) :]
+
+            if rstrip:
+                rclean = rclean.rstrip()
 
             buf.append(rclean)
 
@@ -682,9 +675,8 @@ def ast_to_rst(
             buf.append(f"{pre_head}{sig}\n")
             if node.children:
                 buf.append("\n")
-            children_to_rst(buf, node, ctx.with_indent("   "), preproc)
-            buf.rstrip()
-            if node.children or drv in {"cpp:namespace"}:
+            children_to_rst(buf, node, ctx.with_indent("   "), preproc, rstrip=True)
+            if node.children:
                 buf.append("\n")
             buf.append("\n")
 
@@ -705,6 +697,7 @@ def ast_to_rst(
             ictx = ctx.with_indent("   ")
             for line in child.splitlines():
                 buf.append(f"{ictx.tail_prefix}{line}\n")
+            buf.append("\n")
 
         case nodes.table():
             # Distinguish list-table, grid-table, and plain grid rendering.
@@ -755,20 +748,31 @@ def ast_to_rst(
 
                             if entries:
                                 cell_ctx = ctx.with_list_prefix("   * - ")
-                                ast_to_rst(buf, entries[0], cell_ctx, preproc)
-                                buf.rstrip()
+                                ast_to_rst(
+                                    buf,
+                                    entries[0],
+                                    cell_ctx,
+                                    preproc,
+                                    rstrip=True,
+                                )
                                 buf.append("\n")
 
                                 for entry in entries[1:]:
                                     cell_ctx = ctx.with_list_prefix("     - ")
-                                    ast_to_rst(buf, entry, cell_ctx, preproc)
-                                    buf.rstrip()
+                                    ast_to_rst(
+                                        buf,
+                                        entry,
+                                        cell_ctx,
+                                        preproc,
+                                        rstrip=True,
+                                    )
                                     buf.append("\n")
 
                                 if ctx.preserve_row_newlines and idx < len(
                                     row_blank_lines
                                 ):
-                                    buf.append("\n" * row_blank_lines[idx])
+                                    buf.rstrip()
+                                    buf.append("\n" * (row_blank_lines[idx] + 1))
 
                             idx += 1
             elif source_format == "grid-table":
@@ -857,9 +861,10 @@ def ast_to_rst(
 
         case nodes.section():
             # Section is rendered via its title and children.
-            children_to_rst(buf, node, ctx, preproc)
-            buf.rstrip()
-            buf.append("\n\n")
+            children_to_rst(buf, node, ctx, preproc, rstrip=True)
+            if not rstrip:
+                buf.rstrip()
+                buf.append("\n\n")
 
         case nodes.target():
             # Handle labels and anonymous targets specially.
@@ -886,8 +891,7 @@ def ast_to_rst(
             name = names[0] if names else ""
 
             body = Buffer()
-            children_to_rst(body, node, ctx, preproc)
-            body.rstrip("\n")
+            children_to_rst(body, node, ctx, preproc, rstrip=True)
 
             buf.append(f"{ctx.head_prefix}.. |{name}| replace:: {body}\n\n")
 
@@ -1244,6 +1248,22 @@ register_sphinx_text_roles()
 register_directives()
 
 
+def fix_node(node: nodes.Node, i: int):
+    match node:
+        case nodes.section():
+            assert isinstance(node.parent, nodes.Node)
+            if isinstance(node.children[-1], nodes.target):
+                assert isinstance(node.parent.children, list)
+                node.parent.children.insert(i + 1, node.children.pop())
+        case _:
+            pass
+
+    i = 0
+    while i < len(node.children):
+        fix_node(node.children[i], i)
+        i += 1
+
+
 def format_rst(rst_source: str, *, clean: bool = True) -> str:
     """
     Parse and re-emit reST, normalizing formatting.
@@ -1256,6 +1276,7 @@ def format_rst(rst_source: str, *, clean: bool = True) -> str:
         rst_source,
         reader=NoSubstitutionReader(src=rst_source),
     )
+    fix_node(doctree, 0)
 
     toplevel_title = doctree.children is not None and isinstance(
         doctree.children[0], nodes.title
