@@ -111,8 +111,23 @@ def register_sphinx_text_roles() -> None:
     # Python domain roles.
     for role in ("func", "meth", "class", "exc", "attr", "data", "mod", "obj"):
         roles.register_canonical_role(role, _make_xref_role(role))
-        roles.register_canonical_role(f"cpp:{role}", _make_xref_role(f"cpp:{role}"))
         lang.roles.setdefault(role, role)
+
+    for role in [
+        "any",
+        "class",
+        "concept",
+        "enum",
+        "enumerator",
+        "expr",
+        "func",
+        "member",
+        "struct",
+        "texpr",
+        "type",
+        "var",
+    ]:
+        roles.register_canonical_role(f"cpp:{role}", _make_xref_role(f"cpp:{role}"))
         lang.roles.setdefault(f"cpp:{role}", f"cpp:{role}")
 
     # Common "std" roles.
