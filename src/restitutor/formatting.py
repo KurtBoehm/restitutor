@@ -145,9 +145,11 @@ class PreprocessInfo:
     """
     Per-document preprocessing information.
 
-    :param collected_labels: Mapping from internal IDs to raw labels.
+    :ivar toplevel_title: Whether there is a top-level title.
+    :ivar collected_labels: Mapping from internal IDs to raw labels.
     """
 
+    toplevel_title: bool
     collected_labels: dict[str, str]
 
 
@@ -202,7 +204,7 @@ def ast_to_rst(
             # Compute section level by counting parent sections.
             title_text = node.astext()
 
-            level = -1
+            level = 0 if preproc.toplevel_title else -1
             curr: nodes.Node = node
             while curr.parent is not None:
                 level += isinstance(curr.parent, nodes.section)
@@ -893,7 +895,7 @@ def ast_to_rst(
                 raise RuntimeError("Non-INFO system message!")
 
         case _:
-            raise RuntimeError(f"Unknown node type: {type(node)} {node}")
+            raise RuntimeError(f"Unknown node type: {type(node)} {node} {node.line}")
 
 
 def _render_doxygen_classlike_options(node: DoxyNode, buf: Buffer) -> None:
@@ -1247,11 +1249,18 @@ def format_rst(rst_source: str, *, clean: bool = True) -> str:
         reader=NoSubstitutionReader(src=rst_source),
     )
 
+    toplevel_title = doctree.children is not None and isinstance(
+        doctree.children[0], nodes.title
+    )
+
     buf = Buffer()
     ast_to_rst(
         buf,
         doctree,
         FmtCtx(preserve_row_newlines=not clean),
-        PreprocessInfo(collected_labels=collect_labels(rst_source)),
+        PreprocessInfo(
+            toplevel_title=toplevel_title,
+            collected_labels=collect_labels(rst_source),
+        ),
     )
     return buf.data
