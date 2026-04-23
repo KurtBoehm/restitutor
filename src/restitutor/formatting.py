@@ -669,12 +669,22 @@ def ast_to_rst(
 
         case CppNode():
             # Reconstruct cpp-domain directive and its body.
-            buf.append(f".. {node['cpp_directive']}:: {node['cpp_signature']}\n")
+            # The prefix of the directive
+            drv = node["cpp_directive"]
+            pre_head = f".. {drv}:: "
+            pre_tail = "\n" + " " * len(pre_head)
+
+            # Adjust the signature with correct indentation
+            sig = node["cpp_signature"]
+            assert isinstance(sig, str)
+            sig = pre_tail.join(line.strip() for line in sig.splitlines())
+
+            buf.append(f"{pre_head}{sig}\n")
             if node.children:
                 buf.append("\n")
             children_to_rst(buf, node, ctx.with_indent("   "), preproc)
             buf.rstrip()
-            if node.children:
+            if node.children or drv in {"cpp:namespace"}:
                 buf.append("\n")
             buf.append("\n")
 
