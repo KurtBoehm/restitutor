@@ -696,6 +696,16 @@ def ast_to_rst(
             # Inline math role.
             buf.append(f":math:`{node.astext()}`")
 
+        case nodes.math_block():
+            # Math block.
+            buf.append(f"{ctx.head_prefix}.. math::\n\n")
+            [child] = node.children
+            assert isinstance(child, str)
+
+            ictx = ctx.with_indent("   ")
+            for line in child.splitlines():
+                buf.append(f"{ictx.tail_prefix}{line}\n")
+
         case nodes.table():
             # Distinguish list-table, grid-table, and plain grid rendering.
             source_format = node.get("source_format")

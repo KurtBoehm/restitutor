@@ -37,6 +37,7 @@ Restitutor parses `.rst` files with `docutils`, reconstructs them from the AST, 
   - Images (`.. image::`)
   - Generic admonitions (`.. admonition:: Title`)
   - Standard admonitions (`.. note::`, `.. warning::`, `.. tip::`, etc.)
+  - Maths blocks (`.. math::`).
   - Line blocks (`| line`)
   - Footnotes and citations (`.. [#]_`, `.. [label]` and corresponding references)
 
